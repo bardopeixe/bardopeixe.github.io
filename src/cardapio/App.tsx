@@ -2,6 +2,7 @@ import qrcode from 'qrcode-generator'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { criarConta, entrar, entrarComGoogle, mensagemDeErro, prepararLogin, recuperarSenha, sair, useConta } from '../nuvem/conta'
 import { brl } from '../pdv/dados'
+import { CartaoProduto, Folha, ProdutoSheet, Stepper } from './componentes'
 import {
   NOMES_FORMA_ONLINE,
   ROTULO_STATUS,
@@ -58,7 +59,7 @@ function useSacola() {
     qtd,
     subtotal,
     adicionar(i: Omit<ItemSacola, 'chave'>) {
-      const chave = `${i.produtoId}|${(i.escolhas ?? []).map((e) => `${e.produtoId}:${e.qtd}`).join(',')}|${i.obs}`
+      const chave = `${i.produtoId}|${(i.escolhas ?? []).map((e) => `${e.produtoId}:${e.qtd}`).join(',')}|${(i.adicionais ?? []).map((a) => a.id).sort().join(',')}|${i.obs}`
       setItens((xs) => (xs.some((x) => x.chave === chave) ? xs.map((x) => (x.chave === chave ? { ...x, qtd: x.qtd + i.qtd } : x)) : [...xs, { ...i, chave }]))
     },
     mudar(chave: string, delta: number) {
@@ -72,7 +73,12 @@ function useSacola() {
           const p = loja.produtos.find((y) => y.id === x.produtoId)
           if (!p) return []
           const acr = (x.escolhas ?? []).reduce((s, e) => s + (p.componentes?.flatMap((c) => c.opcoes).find((o) => o.id === e.produtoId)?.acrescimo ?? 0) * e.qtd, 0)
-          return [{ ...x, nome: p.nome, emoji: p.emoji, preco: Math.round((p.preco + acr) * 100) / 100 }]
+          // adicionais com o preço de agora (o que saiu do cardápio cai fora)
+          const adicionais = (x.adicionais ?? []).flatMap((a) => p.adicionais?.filter((y) => y.id === a.id) ?? [])
+          const somaAds = adicionais.reduce((s, a) => s + a.preco, 0)
+          const { adicionais: _a, ...resto } = x
+          void _a
+          return [{ ...resto, nome: p.nome, emoji: p.emoji, preco: Math.round((p.preco + acr + somaAds) * 100) / 100, ...(adicionais.length ? { adicionais } : {}) }]
         })
         return JSON.stringify(novo) === JSON.stringify(xs) ? xs : novo
       })
@@ -112,7 +118,8 @@ export default function App() {
     ouvirLoja(
       (l) => {
         setErroLoja('')
-        setLoja(l)
+        // itens só de mesa (fora do delivery) não aparecem para o cliente
+        setLoja(l ? { ...l, produtos: l.produtos.filter((p) => !p.soMesa) } : l)
       },
       (e) => {
         setErroLoja(e instanceof Error ? e.message : String(e))
@@ -206,7 +213,7 @@ export default function App() {
   if (loja === null)
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 p-8 text-center">
-        <div className="text-6xl">🍢</div>
+        <img src="/logo.png" alt="Bar do Peixe" className="h-28 w-28" />
         <h1 className="text-2xl font-black">Cardápio indisponível</h1>
         <p className="text-stone-600">{erroLoja ? 'Não conseguimos carregar o cardápio. Confira a internet e tente de novo.' : 'O cardápio ainda não foi publicado pela loja.'}</p>
         <button className="rounded-full bg-orange-600 px-6 py-3 font-bold text-white" onClick={() => location.reload()}>
@@ -281,7 +288,6 @@ export default function App() {
           </button>
         </div>
       )}
-      <PortaoIdade loja={loja} />
     </div>
   )
 }
@@ -366,7 +372,7 @@ function Menu({
 
   function adicionarRapido(p: ProdutoOnline) {
     if (p.esgotado) return
-    if (p.componentes?.length) return setAberto(p)
+    if (p.componentes?.length || p.adicionais?.length) return setAberto(p)
     sacola.adicionar({ produtoId: p.id, nome: p.nome, emoji: p.emoji, preco: p.preco, qtd: 1, obs: '' })
     try {
       navigator.vibrate?.(15)
@@ -377,8 +383,8 @@ function Menu({
 
   return (
     <>
-      <header className="relative overflow-hidden bg-gradient-to-br from-orange-600 via-orange-700 to-red-800 px-5 pb-6 pt-5 text-white">
-        <div className="pointer-events-none absolute -right-10 -top-10 text-[160px] opacity-10">🍢</div>
+      <header className="relative overflow-hidden bg-gradient-to-br from-orange-700 via-orange-800 to-stone-950 px-5 pb-6 pt-5 text-white">
+        <img src="/logo.png" alt="" className="pointer-events-none absolute -right-12 -top-6 h-52 w-52 opacity-15" />
         <div className="relative flex items-center justify-between gap-2">
           <span className={`rounded-full px-3 py-1 text-xs font-black ${loja.aberto ? 'bg-emerald-400 text-emerald-950' : 'bg-stone-900/60 text-white'}`}>
             {loja.aberto ? '● ABERTO AGORA' : '● FECHADO'}
@@ -394,7 +400,10 @@ function Menu({
             </button>
           </div>
         </div>
-        <h1 className="relative mt-4 text-3xl font-black leading-tight tracking-tight">{loja.nome}</h1>
+        <div className="relative mt-4 flex items-center gap-3">
+          <img src="/logo.png" alt="Logo do Bar do Peixe" className="h-16 w-16 shrink-0 rounded-full bg-white shadow-lg" />
+          <h1 className="font-marca text-3xl leading-tight tracking-tight">{loja.nome}</h1>
+        </div>
         {loja.endereco && <p className="relative mt-1 text-sm text-orange-100">📍 {loja.endereco}</p>}
         <div className="relative mt-4 flex flex-wrap gap-2 text-xs font-bold">
           {loja.entrega && <span className="rounded-full bg-black/20 px-3 py-1.5">🛵 {loja.tempoEntrega} · entrega a partir de {menorTaxa ? brl(menorTaxa) : 'grátis'}</span>}
@@ -486,195 +495,6 @@ function emojiStatus(s: PedidoOnline['status']) {
   return s === 'novo' ? '⏳' : s === 'aceito' ? '🔥' : s === 'saiu' ? '🛵' : s === 'pronto' ? '🛍️' : s === 'entregue' ? '✅' : '✖️'
 }
 
-function Foto({ p, className = '' }: { p: Pick<ProdutoOnline, 'imagem' | 'emoji' | 'nome'>; className?: string }) {
-  return p.imagem ? (
-    <img src={p.imagem} alt={p.nome} className={`object-cover ${className}`} loading="lazy" />
-  ) : (
-    <div className={`flex items-center justify-center bg-gradient-to-br from-orange-50 to-amber-100 ${className}`}>
-      <span className="text-4xl">{p.emoji}</span>
-    </div>
-  )
-}
-
-function CartaoProduto({ p, qtd, aoAbrir, aoMais }: { p: ProdutoOnline; qtd: number; aoAbrir: () => void; aoMais: () => void }) {
-  return (
-    <li className={`flex gap-3 py-4 ${p.esgotado ? 'opacity-50' : ''}`}>
-      <button className="min-w-0 flex-1 text-left" onClick={aoAbrir} disabled={p.esgotado}>
-        <div className="font-bold leading-snug">{p.nome}</div>
-        {p.descricao && <div className="mt-0.5 line-clamp-2 text-sm text-stone-500">{p.descricao}</div>}
-        {p.componentes?.length ? <div className="mt-0.5 text-xs font-semibold text-orange-700">Escolha os itens ›</div> : null}
-        <div className="mt-1.5 font-extrabold text-stone-900">
-          {p.esgotado ? <span className="rounded bg-stone-200 px-2 py-0.5 text-xs font-black text-stone-600">ESGOTADO</span> : brl(p.preco)}
-        </div>
-      </button>
-      <div className="relative shrink-0">
-        <button onClick={aoAbrir} disabled={p.esgotado} className="block overflow-hidden rounded-2xl">
-          <Foto p={p} className={`h-24 w-24 ${p.esgotado ? 'grayscale' : ''}`} />
-        </button>
-        {!p.esgotado && (
-          <button
-            className={`absolute -bottom-2 -right-2 flex h-9 min-w-9 items-center justify-center rounded-full px-2 text-lg font-black shadow-lg ${qtd ? 'bg-orange-600 text-white' : 'bg-white text-orange-600 ring-1 ring-stone-200'}`}
-            onClick={aoMais}
-            aria-label={`Adicionar ${p.nome}`}
-          >
-            {qtd ? qtd : '+'}
-          </button>
-        )}
-      </div>
-    </li>
-  )
-}
-
-// =====================================================================================
-// Folhas (bottom sheets)
-// =====================================================================================
-
-function Folha({ titulo, aoFechar, children, rodape }: { titulo?: string; aoFechar: () => void; children: ReactNode; rodape?: ReactNode }) {
-  useEffect(() => {
-    const t = (e: KeyboardEvent) => e.key === 'Escape' && aoFechar()
-    window.addEventListener('keydown', t)
-    const antes = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      window.removeEventListener('keydown', t)
-      document.body.style.overflow = antes
-    }
-  }, [aoFechar])
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" onClick={aoFechar}>
-      <div role="dialog" aria-label={titulo} className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
-        {titulo && (
-          <div className="flex items-center justify-between border-b border-stone-100 px-5 py-4">
-            <h2 className="text-lg font-black">{titulo}</h2>
-            <button className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-100 text-xl" onClick={aoFechar} aria-label="Fechar">
-              ×
-            </button>
-          </div>
-        )}
-        <div className="flex-1 overflow-y-auto">{children}</div>
-        {rodape && <div className="border-t border-stone-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">{rodape}</div>}
-      </div>
-    </div>
-  )
-}
-
-function Stepper({ valor, aoMudar, min = 0, max = 99 }: { valor: number; aoMudar: (v: number) => void; min?: number; max?: number }) {
-  return (
-    <div className="flex items-center rounded-full bg-stone-100">
-      <button className="h-10 w-10 rounded-full text-xl font-black text-orange-600 disabled:text-stone-300" disabled={valor <= min} onClick={() => aoMudar(valor - 1)} aria-label="Menos">
-        −
-      </button>
-      <span className="w-7 text-center font-black">{valor}</span>
-      <button className="h-10 w-10 rounded-full text-xl font-black text-orange-600 disabled:text-stone-300" disabled={valor >= max} onClick={() => aoMudar(valor + 1)} aria-label="Mais">
-        +
-      </button>
-    </div>
-  )
-}
-
-function ProdutoSheet({ p, aoFechar, aoAdicionar }: { p: ProdutoOnline; aoFechar: () => void; aoAdicionar: (i: Omit<ItemSacola, 'chave'>) => void }) {
-  const [qtd, setQtd] = useState(1)
-  const [obs, setObs] = useState('')
-  const [sel, setSel] = useState<Record<string, Record<string, number>>>({})
-  const comps = p.componentes ?? []
-  const total = (cid: string) => Object.values(sel[cid] ?? {}).reduce((s, q) => s + q, 0)
-  const completo = comps.every((c) => total(c.id) === c.qtd)
-  const acrescimo = comps.reduce((s, c) => s + c.opcoes.reduce((t, o) => t + (sel[c.id]?.[o.id] ?? 0) * o.acrescimo, 0), 0)
-  const unit = Math.round((p.preco + acrescimo) * 100) / 100
-
-  function adicionar() {
-    const escolhas: NonNullable<ItemOnline['escolhas']> = []
-    for (const c of comps)
-      for (const o of c.opcoes) {
-        const q = sel[c.id]?.[o.id] ?? 0
-        if (!q) continue
-        const ja = escolhas.find((e) => e.produtoId === o.id)
-        if (ja) ja.qtd += q
-        else escolhas.push({ produtoId: o.id, nome: o.nome, qtd: q })
-      }
-    aoAdicionar({ produtoId: p.id, nome: p.nome, emoji: p.emoji, preco: unit, qtd, obs: obs.trim(), ...(escolhas.length ? { escolhas } : {}) })
-  }
-
-  return (
-    <Folha
-      aoFechar={aoFechar}
-      rodape={
-        <div className="flex items-center gap-3">
-          <Stepper valor={qtd} aoMudar={setQtd} min={1} />
-          <button className="flex flex-1 items-center justify-between rounded-2xl bg-orange-600 px-5 py-3.5 font-extrabold text-white disabled:bg-stone-300" disabled={!completo} onClick={adicionar}>
-            <span>{completo ? 'Adicionar' : 'Escolha os itens'}</span>
-            <span>{brl(unit * qtd)}</span>
-          </button>
-        </div>
-      }
-    >
-      <div className="relative">
-        <Foto p={p} className="h-52 w-full" />
-        <button className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-2xl shadow" onClick={aoFechar} aria-label="Fechar">
-          ×
-        </button>
-      </div>
-      <div className="p-5">
-        <h2 className="text-2xl font-black">{p.nome}</h2>
-        {p.descricao && <p className="mt-1 text-stone-600">{p.descricao}</p>}
-        <div className="mt-2 text-xl font-black text-orange-700">{brl(p.preco)}</div>
-        {comps.map((c) => (
-          <div key={c.id} className="mt-5">
-            <div className="flex items-center justify-between rounded-xl bg-stone-100 px-4 py-2.5">
-              <div>
-                <div className="font-extrabold">{c.nome}</div>
-                <div className="text-xs text-stone-500">Escolha {c.qtd}</div>
-              </div>
-              <span className={`rounded-full px-2.5 py-1 text-xs font-black ${total(c.id) === c.qtd ? 'bg-emerald-600 text-white' : 'bg-stone-800 text-white'}`}>
-                {total(c.id)}/{c.qtd}
-              </span>
-            </div>
-            <ul className="divide-y divide-stone-100">
-              {c.opcoes.map((o) => {
-                const q = sel[c.id]?.[o.id] ?? 0
-                const set = (v: number) => setSel((s) => ({ ...s, [c.id]: { ...(s[c.id] ?? {}), [o.id]: v } }))
-                return (
-                  <li key={o.id} className={`flex items-center gap-3 py-3 ${o.esgotado ? 'opacity-40' : ''}`}>
-                    <span className="text-2xl">{o.emoji}</span>
-                    <span className="flex-1">
-                      <span className="block font-semibold">{o.nome}</span>
-                      {o.acrescimo > 0 && <span className="text-sm text-stone-500">+ {brl(o.acrescimo)}</span>}
-                      {o.esgotado && <span className="text-xs font-bold">esgotado</span>}
-                    </span>
-                    {!o.esgotado &&
-                      (c.qtd === 1 ? (
-                        <input
-                          type="radio"
-                          className="h-6 w-6 accent-orange-600"
-                          checked={q === 1}
-                          onChange={() => setSel((s) => ({ ...s, [c.id]: { [o.id]: 1 } }))}
-                          aria-label={o.nome}
-                        />
-                      ) : (
-                        <Stepper valor={q} aoMudar={set} max={q + (c.qtd - total(c.id))} />
-                      ))}
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
-        ))}
-        <label className="mt-5 block">
-          <span className="font-extrabold">Alguma observação?</span>
-          <textarea
-            className="mt-2 w-full rounded-xl border-2 border-stone-200 p-3 outline-none focus:border-orange-400"
-            rows={2}
-            maxLength={140}
-            placeholder="Ex.: bem passado, sem farofa, cerveja bem gelada…"
-            value={obs}
-            onChange={(e) => setObs(e.target.value)}
-          />
-        </label>
-      </div>
-    </Folha>
-  )
-}
-
 function SacolaSheet({ loja, sacola, aoFechar, aoContinuar }: { loja: LojaOnline; sacola: Sacola; aoFechar: () => void; aoContinuar: () => void }) {
   const falta = loja.pedidoMinimo - sacola.subtotal
   const pode = loja.aberto && sacola.qtd > 0 && falta <= 0
@@ -703,6 +523,7 @@ function SacolaSheet({ loja, sacola, aoFechar, aoContinuar }: { loja: LojaOnline
               <div className="min-w-0 flex-1">
                 <div className="font-bold leading-snug">{i.nome}</div>
                 {i.escolhas?.length ? <div className="text-xs text-stone-500">{i.escolhas.map((e) => `${e.qtd}× ${e.nome}`).join(', ')}</div> : null}
+                {i.adicionais?.length ? <div className="text-xs font-semibold text-emerald-700">{i.adicionais.map((a) => `+ ${a.nome}`).join(' ')}</div> : null}
                 {i.obs && <div className="text-xs italic text-stone-500">“{i.obs}”</div>}
                 <div className="mt-0.5 font-extrabold">{brl(i.preco * i.qtd)}</div>
               </div>
@@ -937,7 +758,7 @@ function Checkout({
         ...(endereco ? { endereco } : {}),
         itens: sacola.itens.map((x) => {
           const i: ItemOnline = { produtoId: x.produtoId, nome: x.nome, emoji: x.emoji, qtd: x.qtd, preco: x.preco, obs: x.obs }
-          return x.escolhas?.length ? { ...i, escolhas: x.escolhas } : i
+          return { ...i, ...(x.escolhas?.length ? { escolhas: x.escolhas } : {}), ...(x.adicionais?.length ? { adicionais: x.adicionais } : {}) }
         }),
         subtotal: sacola.subtotal,
         taxaEntrega: taxa,
@@ -1045,6 +866,7 @@ function Checkout({
               <span className="flex-1">
                 {i.nome}
                 {i.escolhas?.length ? <span className="text-stone-500"> ({i.escolhas.map((e) => `${e.qtd} ${e.nome}`).join(', ')})</span> : null}
+                {i.adicionais?.length ? <span className="text-emerald-700"> {i.adicionais.map((a) => `+ ${a.nome}`).join(' ')}</span> : null}
               </span>
               <span>{brl(i.preco * i.qtd)}</span>
             </li>
@@ -1114,7 +936,7 @@ function Acompanhar({ loja, pedido, aoVoltar, aoPedidos }: { loja: LojaOnline; p
     setCancelando(true)
     try {
       const { db, fs } = await firebase()
-      await fs.updateDoc(fs.doc(db, 'espetinho_pedidos', pedido!.id), { status: 'cancelado', atualizadoEm: new Date().toISOString(), motivo: 'Cancelado pelo cliente' })
+      await fs.updateDoc(fs.doc(db, 'pedidos', pedido!.id), { status: 'cancelado', atualizadoEm: new Date().toISOString(), motivo: 'Cancelado pelo cliente' })
     } catch {
       alert('A loja já aceitou o pedido. Para cancelar, fale com a loja.')
     } finally {
@@ -1162,6 +984,7 @@ function Acompanhar({ loja, pedido, aoVoltar, aoPedidos }: { loja: LojaOnline; p
               <span className="flex-1">
                 {i.nome}
                 {i.escolhas?.length ? <span className="text-stone-500"> ({i.escolhas.map((e) => `${e.qtd} ${e.nome}`).join(', ')})</span> : null}
+                {i.adicionais?.length ? <span className="text-emerald-700"> {i.adicionais.map((a) => `+ ${a.nome}`).join(' ')}</span> : null}
                 {i.obs && <span className="block text-xs italic text-stone-500">“{i.obs}”</span>}
               </span>
               <span>{brl(i.preco * i.qtd)}</span>
@@ -1297,31 +1120,5 @@ function Conta({ usuario, aoVoltar, aoPedidos, aoSair }: { usuario: { nome: stri
         </button>
       </div>
     </>
-  )
-}
-
-function PortaoIdade({ loja }: { loja: LojaOnline }) {
-  const [ok, setOk] = useState(() => lerLocal('cardapio:18', false))
-  if (ok || !loja.produtos.some((p) => p.alcool)) return null
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-6">
-      <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
-        <div className="text-5xl">🔞</div>
-        <h2 className="mt-2 text-xl font-black">Você tem 18 anos ou mais?</h2>
-        <p className="mt-1 text-sm text-stone-600">Este cardápio tem bebidas alcoólicas, vendidas só para maiores de 18 anos.</p>
-        <button
-          className="mt-5 w-full rounded-2xl bg-orange-600 py-3.5 font-extrabold text-white"
-          onClick={() => {
-            gravarLocal('cardapio:18', true)
-            setOk(true)
-          }}
-        >
-          Sim, tenho 18 anos ou mais
-        </button>
-        <button className="mt-2 w-full py-2 text-sm font-semibold text-stone-500" onClick={() => (location.href = 'https://www.google.com')}>
-          Não
-        </button>
-      </div>
-    </div>
   )
 }

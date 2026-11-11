@@ -9,7 +9,7 @@ import { FIREBASE } from './firebaseConfig'
  * ou quando já estava logado neste aparelho, para não deixar a loja mais lenta.
  */
 
-export type Usuario = { uid: string; nome: string; email: string; foto?: string }
+export type Usuario = { uid: string; nome: string; email: string; foto?: string; verificado?: boolean }
 
 
 export const contasAtivas = FIREBASE.apiKey.trim().length > 0
@@ -47,7 +47,9 @@ function carregar() {
       lembrar(Boolean(u))
       avisar({
         pronto: true,
-        usuario: u ? { uid: u.uid, nome: u.displayName || u.email || 'Cliente', email: u.email ?? '', foto: u.photoURL ?? undefined } : null,
+        usuario: u
+          ? { uid: u.uid, nome: u.displayName || u.email || 'Cliente', email: u.email ?? '', foto: u.photoURL ?? undefined, verificado: u.emailVerified }
+          : null,
       })
     })
     return { auth, db: getFirestore(app) }
@@ -138,6 +140,24 @@ export async function atualizarNome(nome: string) {
   if (!auth.currentUser) return
   await updateProfile(auth.currentUser, { displayName: nome.trim() })
   if (estado.usuario) avisar({ ...estado, usuario: { ...estado.usuario, nome: nome.trim() } })
+}
+
+/** Manda o link de confirmação para o e-mail da conta (garçom com e-mail e senha). */
+export async function enviarVerificacao() {
+  const { auth } = await carregar()
+  const { sendEmailVerification } = await import('firebase/auth')
+  if (auth.currentUser) await sendEmailVerification(auth.currentUser)
+}
+
+/** Confere de novo se o e-mail já foi confirmado (depois de clicar no link). */
+export async function recarregarUsuario() {
+  const { auth } = await carregar()
+  const u = auth.currentUser
+  if (!u) return false
+  await u.reload()
+  await u.getIdToken(true)
+  if (estado.usuario) avisar({ ...estado, usuario: { ...estado.usuario, verificado: u.emailVerified } })
+  return u.emailVerified
 }
 
 /** Abre o login sob demanda (pré-carrega o Firebase enquanto o cliente digita). */

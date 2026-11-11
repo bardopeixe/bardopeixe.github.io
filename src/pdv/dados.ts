@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import type { Adicional, AdicionalItem, Caixa, Canal, Categoria, Comanda, Config, EmbalagemPedido, Escolha, FormaPagamento, Insumo, ItemFicha, ItemPedido, MovEstoque, Pedido, Produto, Unidade } from './tipos'
 
@@ -32,7 +31,7 @@ export const NOMES_CATEGORIA: Record<Categoria, string> = {
   prato: 'Pratos',
   porcao: 'Porções',
   espeto: 'Espetos',
-  combo: 'Combos e jantinhas',
+  combo: 'Combos',
   bebida: 'Bebidas',
   drink: 'Doses e drinks',
   outro: 'Outros',
@@ -347,37 +346,6 @@ export function useEspetoDados() {
   const [movEstoque, setMovEstoque] = useLocalStorage<MovEstoque[]>('espeto:estoque-mov', [])
   const [comandas, setComandas] = useLocalStorage<Comanda[]>('espeto:comandas', [])
   const config = { ...CONFIG_INICIAL, ...configSalva }
-
-  // Quem já usava o sistema antes do espeto misto existir ganha ele uma vez (se apagar, não volta).
-  useEffect(() => {
-    try {
-      if (localStorage.getItem('espeto:migr-misto')) return
-      localStorage.setItem('espeto:migr-misto', '1')
-    } catch {
-      return
-    }
-    setProdutos((ps) => {
-      if (ps.some((p) => p.id === 'p-misto' || /misto/i.test(p.nome))) return ps
-      const misto = PRODUTOS_INICIAIS.find((p) => p.id === 'p-misto')!
-      const ficha = misto.ficha.filter((f) => insumos.some((i) => i.id === f.insumoId))
-      const pos = ps.findIndex((p) => p.id === 'p-linguica')
-      const novo = { ...misto, ficha }
-      return pos >= 0 ? [...ps.slice(0, pos + 1), novo, ...ps.slice(pos + 1)] : [...ps, novo]
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Saquinho térmico para quem já usava antes dele existir (uma vez só).
-  useEffect(() => {
-    try {
-      if (localStorage.getItem('espeto:migr-saquinho')) return
-      localStorage.setItem('espeto:migr-saquinho', '1')
-    } catch {
-      return
-    }
-    setInsumos((is) => (is.some((i) => i.id === SAQUINHO_TERMICO.id) ? is : [...is, SAQUINHO_TERMICO]))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const caixaAberto = caixas.find((c) => !c.fechadoEm) ?? null
   return {
