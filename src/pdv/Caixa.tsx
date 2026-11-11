@@ -118,7 +118,7 @@ function AbrirCaixa({ dados, aoAbrir, irEstoque }: { dados: Dados; aoAbrir: () =
           <div className="flex items-center justify-between gap-2">
             <h3 className="font-extrabold">Estoque pronto para vender</h3>
             <button className="text-sm font-bold text-orange-700" onClick={irEstoque}>
-              Montar espetos / lançar compra →
+              Lançar compra / estoque →
             </button>
           </div>
           <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">

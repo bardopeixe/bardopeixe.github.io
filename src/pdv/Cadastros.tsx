@@ -271,9 +271,11 @@ function Produtos({ dados }: { dados: Dados }) {
         <button className={btn.secundario} onClick={() => setFardo(true)}>
           📦 Criar fardo
         </button>
-        <button className={btn.secundario} onClick={() => setEditando(espetoNoPao(dados))}>
-          🥖 Espeto no pão
-        </button>
+        {dados.produtos.some((p) => p.categoria === 'espeto') && (
+          <button className={btn.secundario} onClick={() => setEditando(espetoNoPao(dados))}>
+            🥖 Espeto no pão
+          </button>
+        )}
         {!temBar && (
           <button
             className={btn.secundario}
@@ -294,7 +296,7 @@ function Produtos({ dados }: { dados: Dados }) {
         <button
           className={btn.primario}
           onClick={() =>
-            setEditando({ id: novoId(), nome: '', categoria: 'espeto', preco: 0, emoji: '🍢', ficha: [], custoDireto: 0, ativo: true, estoque: 0 })
+            setEditando({ id: novoId(), nome: '', categoria: 'prato', preco: 0, emoji: '🍽️', ficha: [], custoDireto: 0, ativo: true })
           }
         >
           + Novo produto

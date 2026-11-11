@@ -31,9 +31,8 @@ export default function Estoque({ dados }: { dados: Dados }) {
   return (
     <div className="space-y-6">
       <div className="rounded-2xl bg-orange-50 p-4 text-sm text-orange-950">
-        <b>Como funciona:</b> quando a carne chega, lance em <b>“Chegou compra”</b> (em kg, com o valor pago — o custo se atualiza). Ao espetar, use{' '}
-        <b>“Montar espetos”</b>: informe quantos espetos saíram e quantos kg usou. O sistema baixa os kg, soma os espetos prontos e mostra o rendimento
-        real. As vendas (inclusive dentro de combos e jantinhas) baixam os espetos prontos.
+        <b>Como funciona:</b> quando o peixe, a carne ou as bebidas chegam, lance em <b>“Chegou compra”</b> (em kg, litros ou unidades, com o valor pago — o
+        custo se atualiza). Com a ficha técnica de cada prato em Cadastros, cada venda baixa os insumos usados. Bebidas e itens prontos baixam por unidade.
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
@@ -89,12 +88,15 @@ export default function Estoque({ dados }: { dados: Dados }) {
           )}
         </section>
 
+        {(espetos.length > 0 || prontosComprados.length > 0) && (
         <section className="rounded-2xl border-2 border-stone-200 bg-white p-4">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-lg font-extrabold">🍢 Espetos prontos</h2>
-            <button className={btn.primario + ' !py-2'} onClick={() => setAcao({ tipo: 'montar' })}>
-              Montar espetos
-            </button>
+            <h2 className="text-lg font-extrabold">{espetos.length ? '🍢 Espetos prontos' : '📦 Itens prontos'}</h2>
+            {espetos.length > 0 && (
+              <button className={btn.primario + ' !py-2'} onClick={() => setAcao({ tipo: 'montar' })}>
+                Montar espetos
+              </button>
+            )}
           </div>
           <ul className="mt-3 divide-y divide-stone-100">
             {espetos.map((p) => (
@@ -111,11 +113,10 @@ export default function Estoque({ dados }: { dados: Dados }) {
               </li>
             ))}
           </ul>
-          {espetos.length === 0 && <p className="text-sm text-stone-500">Nenhum espeto com controle de estoque. Ative em Cadastros → editar produto.</p>}
 
           {prontosComprados.length > 0 && (
             <>
-              <h3 className="mt-5 font-extrabold">🥤 Bebidas e outros (em unidades)</h3>
+              <h3 className={`font-extrabold ${espetos.length ? 'mt-5' : 'mt-3'}`}>🥤 Bebidas e outros (em unidades)</h3>
               <ul className="mt-2 divide-y divide-stone-100">
                 {prontosComprados.map((p) => (
                   <li key={p.id} className="flex items-center gap-2 py-2">
@@ -134,6 +135,7 @@ export default function Estoque({ dados }: { dados: Dados }) {
             </>
           )}
         </section>
+        )}
       </div>
 
       <ParaOndeFoi movEstoque={movEstoque} />

@@ -1,6 +1,7 @@
 import qrcode from 'qrcode-generator'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { entrar, entrarComGoogle, mensagemDeErro, recuperarSenha, sair, useConta } from '../nuvem/conta'
+import { contasAtivas, entrar, entrarComGoogle, mensagemDeErro, recuperarSenha, sair, useConta } from '../nuvem/conta'
+import { FIREBASE } from '../nuvem/firebaseConfig'
 import {
   arred,
   brl,
@@ -15,6 +16,9 @@ import {
   moverEstoqueProdutos,
   novoId,
   precoComEscolhas,
+  custoAdicionais,
+  paraItem,
+  somaAdicionais,
   taxaDaForma,
   type Dados,
 } from './dados'
@@ -46,10 +50,13 @@ export type Online = ReturnType<typeof useOnline>
 
 const CHAVE_PUBLICADO = 'espeto:online-publicado'
 
+export { textoErroNuvem }
+
 export function useOnline(dados: Dados) {
   const { usuario, pronto } = useConta()
   const cfg: ConfigOnline = { ...CONFIG_ONLINE_INICIAL, ...(dados.config.online ?? {}) }
-  const ativo = !!usuario && !!dados.config.online
+  // conectado com a conta do dono: publica o cardápio (também usado pelo app do garçom) e escuta os pedidos
+  const ativo = !!usuario
   const [pedidos, setPedidos] = useState<PedidoOnline[]>([])
   const [erro, setErro] = useState('')
   const [publicacao, setPublicacao] = useState<{ tipo: 'ok' | 'enviando' | 'erro'; msg?: string; em?: string } | null>(null)
@@ -139,7 +146,7 @@ export function useOnline(dados: Dados) {
   // publica o cardápio (preços, esgotados, aberto/fechado) sempre que algo muda
   const loja = useMemo(
     () =>
-      dados.config.online
+      ativo
         ? montarLojaOnline({
             produtos: dados.produtos,
             nomeLoja: dados.config.nomeLoja,
@@ -147,10 +154,12 @@ export function useOnline(dados: Dados) {
             telefone: dados.config.telefone,
             espetoHoje: dados.config.espetoHoje,
             online: cfg,
+            adicionais: dados.config.adicionais,
+            obsRapidas: dados.config.obsRapidas,
           })
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dados.produtos, dados.config],
+    [dados.produtos, dados.config, ativo],
   )
   const assinatura = loja ? JSON.stringify({ ...loja, atualizadoEm: '' }) : ''
   useEffect(() => {
@@ -236,7 +245,7 @@ const FORMA_PDV: Record<PedidoOnline['pagamento']['forma'], FormaPagamento> = {
 }
 
 /** Monta os itens com os preços e custos do PDV (o que vale é o cadastro, não o que veio do celular). */
-function itensDoOnline(po: PedidoOnline, dados: Dados): ItemPedido[] {
+export function itensDoOnline(po: Pick<PedidoOnline, 'itens'>, dados: Dados): ItemPedido[] {
   const { produtos, insumos } = dados
   return po.itens.map((io) => {
     const p = produtos.find((x) => x.id === io.produtoId)
@@ -254,16 +263,22 @@ function itensDoOnline(po: PedidoOnline, dados: Dados): ItemPedido[] {
         : undefined
     const esc = escolhas ?? auto
     if (!p) return { produtoId: io.produtoId, nome: io.nome, categoria: 'outro', emoji: io.emoji, preco: io.preco, custo: 0, qtd: io.qtd, obs: io.obs }
+    // adicionais: valem o preço e o custo cadastrados no PDV
+    const adicionais = (io.adicionais ?? [])
+      .map((a) => dados.config.adicionais?.find((x) => x.id === a.id))
+      .filter((a): a is NonNullable<typeof a> => !!a)
+      .map(paraItem)
     return {
       produtoId: p.id,
       nome: p.nome,
       categoria: p.categoria,
       emoji: p.emoji,
-      preco: precoComEscolhas(p, esc, p.preco),
-      custo: arred(custoCompleto(p, insumos, produtos, esc)),
+      preco: arred(precoComEscolhas(p, esc, p.preco) + somaAdicionais(adicionais)),
+      custo: arred(custoCompleto(p, insumos, produtos, esc) + custoAdicionais(adicionais)),
       qtd: io.qtd,
       obs: io.obs,
       ...(esc?.length ? { escolhas: esc } : {}),
+      ...(adicionais.length ? { adicionais } : {}),
     }
   })
 }
@@ -778,10 +793,16 @@ function Configurar({
         )}
       </div>
       <p className="text-stone-600">
-        O cliente abre <b>{URL_CARDAPIO.replace('https://', '')}</b> no celular, entra com e-mail ou Google, monta o pedido e ele cai aqui com alarme. Os produtos,
-        preços e o que está esgotado vão sozinhos do PDV.
+        O cliente abre <b>{URL_CARDAPIO.replace('https://', '')}</b> no celular, entra com e-mail ou Google, monta o pedido (entrega ou retirada) e ele cai aqui com
+        alarme. Os produtos, preços, adicionais e o que está esgotado vão sozinhos do PDV. Esta mesma conexão recebe os pedidos dos garçons.
       </p>
 
+      {!contasAtivas && (
+        <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-900">
+          <b>Falta ligar o Firebase do restaurante.</b> Cole o <code>firebaseConfig</code> do projeto em <code>src/nuvem/firebaseConfig.ts</code> e publique o site de novo.
+          Enquanto isso, o cardápio digital e o garçom no celular ficam desligados (o resto do PDV funciona normalmente).
+        </div>
+      )}
       <Passo n={1} titulo="Entrar com a conta do dono" feito={!!online.usuario}>
         {online.usuario ? (
           <div className="flex flex-wrap items-center gap-3">
@@ -818,7 +839,7 @@ function Configurar({
           <ol className="list-decimal space-y-1 pl-5 text-sm text-stone-700">
             <li>
               Abra o{' '}
-              <a className="font-bold text-orange-700 underline" href="https://console.firebase.google.com/project/plisselab/firestore/rules" target="_blank" rel="noreferrer">
+              <a className="font-bold text-orange-700 underline" href={FIREBASE.projectId ? `https://console.firebase.google.com/project/${FIREBASE.projectId}/firestore/rules` : 'https://console.firebase.google.com/'} target="_blank" rel="noreferrer">
                 Firebase → Firestore → Regras
               </a>{' '}
               (entre com a conta Google do Firebase).

@@ -24,12 +24,16 @@ import {
   taxaDoCanal,
   precoDelivery,
   NOMES_CANAL,
+  adicionaisDe,
+  custoAdicionais,
+  paraItem,
+  somaAdicionais,
   type Dados,
 } from './dados'
 import { imprimirLancamento, imprimirPedido } from './impressao'
 import { DetalheComanda } from './Comandas'
 import { statusComanda } from './comanda'
-import type { Canal, Categoria, Comanda, Escolha, ItemComanda, Pagamento, Pedido, Produto } from './tipos'
+import type { AdicionalItem, Canal, Categoria, Comanda, Escolha, ItemComanda, Pagamento, Pedido, Produto } from './tipos'
 import { CampoNumero, Imagem, Modal, btn } from './ui'
 import { LerComCamera, cameraLeSuportada, useLeitorCodigo } from './leitor'
 
@@ -39,6 +43,8 @@ interface Linha {
   qtd: number
   obs: string
   escolhas?: Escolha[]
+  /** Adicionais do prato (ovo frito…): somam no preço. */
+  adicionais?: AdicionalItem[]
   /** Preço mudado na hora (promoção): vale só para esta linha. */
   precoManual?: number
 }
@@ -55,7 +61,7 @@ export interface ModoComanda {
 }
 
 export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara: (aba: 'caixa') => void; comanda?: ModoComanda }) {
-  const { produtos, setProdutos, insumos, setInsumos, pedidos, setPedidos, caixaAberto, config, setConfig } = dados
+  const { produtos, setProdutos, insumos, setInsumos, pedidos, setPedidos, caixaAberto, config } = dados
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [cliente, setCliente] = useState('')
   const [viagem, setViagem] = useState(false)
@@ -155,7 +161,7 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
   const prodPorId = (id: string) => produtos.find((p) => p.id === id)
   const precoLinha = (l: Linha) => {
     const p = prodPorId(l.produtoId)
-    return p ? (l.precoManual ?? precoComEscolhas(p, l.escolhas, precoBase(p))) : 0
+    return p ? (l.precoManual ?? precoComEscolhas(p, l.escolhas, precoBase(p)) + somaAdicionais(l.adicionais)) : 0
   }
   const subtotal = arred(linhas.reduce((s, l) => s + precoLinha(l) * l.qtd, 0))
   const qtdItens = linhas.reduce((s, l) => s + l.qtd, 0)
@@ -181,7 +187,7 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
     }
     const chave = chaveEscolhas(escolhas)
     setLinhas((ls) => {
-      const ultima = [...ls].reverse().find((l) => l.produtoId === p.id && !l.obs && chaveEscolhas(l.escolhas) === chave && l.precoManual === undefined)
+      const ultima = [...ls].reverse().find((l) => l.produtoId === p.id && !l.obs && !l.adicionais?.length && chaveEscolhas(l.escolhas) === chave && l.precoManual === undefined)
       if (ultima) return ls.map((l) => (l.id === ultima.id ? { ...l, qtd: l.qtd + 1 } : l))
       return [...ls, { id: novoId(), produtoId: p.id, qtd: 1, obs: '', escolhas }]
     })
@@ -235,6 +241,18 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
     )
   }
 
+  /** Liga/desliga um adicional do prato (ovo frito…). */
+  function alternarAdicional(id: string, a: AdicionalItem) {
+    setLinhas((ls) =>
+      ls.map((l) => {
+        if (l.id !== id) return l
+        const tem = l.adicionais?.some((x) => x.id === a.id)
+        const novos = tem ? (l.adicionais ?? []).filter((x) => x.id !== a.id) : [...(l.adicionais ?? []), a]
+        return { ...l, adicionais: novos.length ? novos : undefined }
+      }),
+    )
+  }
+
   function limpar() {
     setLinhas([])
     setCliente('')
@@ -254,18 +272,19 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
           nome: p.nome,
           categoria: p.categoria,
           emoji: p.emoji,
-          preco: l.precoManual ?? precoComEscolhas(p, l.escolhas, precoBase(p)),
-          ...(l.precoManual !== undefined ? { precoNormal: precoComEscolhas(p, l.escolhas, precoBase(p)) } : {}),
-          custo: arred(custoCompleto(p, insumos, produtos, l.escolhas)),
+          preco: precoLinha(l),
+          ...(l.precoManual !== undefined ? { precoNormal: precoComEscolhas(p, l.escolhas, precoBase(p)) + somaAdicionais(l.adicionais) } : {}),
+          custo: arred(custoCompleto(p, insumos, produtos, l.escolhas) + custoAdicionais(l.adicionais)),
           qtd: l.qtd,
           obs: l.obs,
           ...(l.escolhas?.length ? { escolhas: l.escolhas } : {}),
+          ...(l.adicionais?.length ? { adicionais: l.adicionais } : {}),
         }
       })
       .filter((x): x is NonNullable<typeof x> => x !== null)
   }
 
-  /** Comanda: anota os itens na mesa, tira do estoque (vão para a brasa) e limpa a tela. */
+  /** Comanda: anota os itens na mesa, tira do estoque (vão para a cozinha) e limpa a tela. */
   function lancarNaComanda() {
     if (!comanda || !linhas.length) return
     const itens = montarItens()
@@ -443,15 +462,6 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
               📷
             </button>
           )}
-          {!comanda && (
-            <button
-              onClick={() => setConfig((c) => ({ ...c, espetoHoje: !c.espetoHoje }))}
-              className={`shrink-0 rounded-xl px-3 text-sm font-bold ${config.espetoHoje ? 'bg-orange-600 text-white' : 'bg-white text-stone-500 ring-2 ring-stone-200'}`}
-              title="Nos dias sem espeto, os espetos e combos somem da venda e não sai cupom da churrasqueira"
-            >
-              🔥 Espeto hoje: {config.espetoHoje ? 'SIM' : 'NÃO'}
-            </button>
-          )}
         </div>
         <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
           {(['todos', ...categorias] as Filtro[]).map((f) => (
@@ -475,7 +485,11 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
             const esgotado = r !== undefined && r <= 0
             const qtd = noCarrinhoDireto(p.id)
             const cor =
-              p.categoria === 'espeto'
+              p.categoria === 'prato'
+                ? 'border-orange-300'
+                : p.categoria === 'porcao'
+                ? 'border-amber-400'
+                : p.categoria === 'espeto'
                 ? 'border-orange-300'
                 : p.categoria === 'combo'
                   ? 'border-rose-300'
@@ -612,10 +626,13 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
                     {l.escolhas && p.componentes?.some((c) => c.opcoes.length > 1) && (
                       <div className="text-sm font-semibold text-rose-700">{l.escolhas.map((e) => `${e.qtd}x ${e.nome}`).join(' + ')}</div>
                     )}
+                    {l.adicionais?.length ? (
+                      <div className="text-sm font-semibold text-emerald-700">{l.adicionais.map((a) => `+ ${a.nome}`).join(' ')}</div>
+                    ) : null}
                     <div className="text-sm text-stone-500">
                       <button className="rounded px-1 underline decoration-dotted hover:bg-orange-50" title="Mudar o preço (promoção)" onClick={() => setPrecoDe(l.id)}>
                         {l.precoManual !== undefined && (
-                          <span className="mr-1 text-xs text-stone-400 line-through">{brl(precoComEscolhas(p, l.escolhas, precoBase(p)))}</span>
+                          <span className="mr-1 text-xs text-stone-400 line-through">{brl(precoComEscolhas(p, l.escolhas, precoBase(p)) + somaAdicionais(l.adicionais))}</span>
                         )}
                         <span className={l.precoManual !== undefined ? 'font-bold text-emerald-700' : ''}>{brl(precoLinha(l))}</span> ✏️
                       </button>{' '}
@@ -636,10 +653,26 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
                 <div className="mt-1 pl-12">
                   {l.obs && <div className="text-sm font-semibold text-orange-700">» {l.obs}</div>}
                   <button className="text-sm text-stone-500 underline" onClick={() => setObsAberta(aberta ? null : l.id)}>
-                    {aberta ? 'ok, fechar' : l.obs ? 'editar observação' : '+ observação'}
+                    {aberta ? 'ok, fechar' : l.obs || l.adicionais?.length ? 'editar observação / adicionais' : adicionaisDe(p, config).length ? '+ observação / adicionais' : '+ observação'}
                   </button>
                   {aberta && (
                     <div className="mt-2 space-y-2">
+                      {adicionaisDe(p, config).length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {adicionaisDe(p, config).map((a) => {
+                            const marcado = l.adicionais?.some((x) => x.id === a.id)
+                            return (
+                              <button
+                                key={a.id}
+                                onClick={() => alternarAdicional(l.id, paraItem(a))}
+                                className={`rounded-full px-3 py-1.5 text-sm font-bold ${marcado ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200'}`}
+                              >
+                                + {a.nome} {brl(a.preco)}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
                       <div className="flex flex-wrap gap-1.5">
                         {config.obsRapidas.map((o) => {
                           const marcado = l.obs.split(', ').includes(o)
@@ -766,7 +799,7 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
           return (
             <ModalPreco
               nome={p.nome}
-              normal={precoComEscolhas(p, l.escolhas, precoBase(p))}
+              normal={precoComEscolhas(p, l.escolhas, precoBase(p)) + somaAdicionais(l.adicionais)}
               atual={precoLinha(l)}
               aoFechar={() => setPrecoDe(null)}
               aoSalvar={(v) => {
@@ -809,6 +842,7 @@ export function ModalPagamento({
   subtotal,
   viagem,
   app,
+  servicoPct,
   aoFechar,
   aoConfirmar,
 }: {
@@ -816,13 +850,17 @@ export function ModalPagamento({
   viagem: boolean
   /** Pedido de app de delivery (nome do app): mostra “Pago no app”. */
   app?: string
+  /** Mesa: % da taxa de serviço (o caixa pode tirar se o cliente não quiser pagar). */
+  servicoPct?: number
   aoFechar: () => void
-  aoConfirmar: (desconto: number, pagamentos: Pagamento[], recebidoDinheiro: number) => void
+  aoConfirmar: (desconto: number, pagamentos: Pagamento[], recebidoDinheiro: number, taxaServico: number) => void
 }) {
   const [desconto, setDesconto] = useState(0)
+  const [comServico, setComServico] = useState(Boolean(servicoPct))
+  const servico = servicoPct && comServico ? arred((Math.max(0, subtotal - desconto) * servicoPct) / 100) : 0
   const [pagamentos, setPagamentos] = useState<Pagamento[]>(app ? [{ forma: 'app', valor: subtotal }] : [])
   const [recebido, setRecebido] = useState(0)
-  const total = arred(Math.max(0, subtotal - desconto))
+  const total = arred(Math.max(0, subtotal - desconto) + servico)
   const pago = arred(pagamentos.reduce((s, p) => s + p.valor, 0))
   const falta = arred(total - pago)
   const emDinheiro = pagamentos.find((p) => p.forma === 'dinheiro')?.valor ?? 0
@@ -855,8 +893,25 @@ export function ModalPagamento({
           {viagem && <span className="rounded bg-orange-600 px-2 py-0.5 font-bold text-white">{app ? `${app.toUpperCase()} — VIAGEM` : 'PARA VIAGEM'}</span>}
         </div>
         <div className="text-4xl font-black">{brl(total)}</div>
-        {desconto > 0 && <div className="text-sm text-stone-300">Subtotal {brl(subtotal)} − desconto {brl(desconto)}</div>}
+        {(desconto > 0 || servico > 0) && (
+          <div className="text-sm text-stone-300">
+            Consumo {brl(subtotal)}
+            {desconto > 0 && ` − desconto ${brl(desconto)}`}
+            {servico > 0 && ` + serviço ${brl(servico)}`}
+          </div>
+        )}
       </div>
+
+      {!!servicoPct && (
+        <label className={`mt-3 flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3 ${comServico ? 'border-orange-300 bg-orange-50' : 'border-stone-200 bg-white'}`}>
+          <input type="checkbox" className="h-6 w-6 accent-orange-700" checked={comServico} onChange={(e) => setComServico(e.target.checked)} />
+          <span className="flex-1 font-bold">
+            Taxa de serviço {servicoPct.toLocaleString('pt-BR')}%
+            <span className="block text-xs font-normal text-stone-500">Desmarque se o cliente não quiser pagar.</span>
+          </span>
+          <span className="text-lg font-black">{brl(arred((Math.max(0, subtotal - desconto) * servicoPct) / 100))}</span>
+        </label>
+      )}
 
       <div className="mt-4 grid grid-cols-2 gap-2">
         {(app ? (['app', ...FORMAS] as Pagamento['forma'][]) : FORMAS).map((f) => {
@@ -941,7 +996,7 @@ export function ModalPagamento({
       </details>
 
       <div className="sticky -bottom-4 -mx-4 mt-5 bg-white px-4 pb-4 pt-2 sm:-bottom-6 sm:-mx-6 sm:px-6 sm:pb-6">
-        <button className={`${btn.verde} w-full py-4 text-xl`} disabled={!pode} onClick={() => aoConfirmar(desconto, pagamentos, recebido)}>
+        <button className={`${btn.verde} w-full py-4 text-xl`} disabled={!pode} onClick={() => aoConfirmar(desconto, pagamentos, recebido, servico)}>
           {pagamentos.length ? `✔ Confirmar ${brl(total)}` : 'Escolha a forma de pagamento'}
         </button>
       </div>

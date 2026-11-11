@@ -4,6 +4,10 @@ import type { Config, Insumo, Produto } from './tipos'
 // ---------------- seções do cardápio ----------------
 
 export const SECOES = [
+  'Prato comercial',
+  'Executivos',
+  'Pratos',
+  'Porções',
   'Espetos',
   'Combos e jantinhas',
   'Cervejas',
@@ -36,6 +40,8 @@ export function secaoDe(p: Produto): string {
   if (p.secao?.trim()) return p.secao.trim()
   const n = sem(p.nome)
   if (ehFardo(p)) return 'Fardos'
+  if (p.categoria === 'prato') return 'Pratos'
+  if (p.categoria === 'porcao') return 'Porções'
   if (p.categoria === 'espeto') return 'Espetos'
   if (p.categoria === 'combo') return 'Combos e jantinhas'
   if (p.categoria === 'drink') return 'Doses e drinks'

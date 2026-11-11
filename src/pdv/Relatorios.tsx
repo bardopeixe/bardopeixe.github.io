@@ -56,6 +56,7 @@ export function RelatorioCaixa({ caixa, r, dados }: { caixa: Caixa; r: Resumo; d
               inclui {e.qtd} {e.nome.toLowerCase()} = {brl(e.custo)}
             </p>
           ))}
+          {r.servico > 0 && <Linha rotulo="− Taxa de serviço (dos garçons)" valor={brl(r.servico)} neg />}
           <Linha rotulo="− Taxas (maquininha e apps)" valor={brl(r.taxas)} neg />
           <Linha rotulo="− Despesas do dia" valor={brl(r.despesas)} neg />
           <Linha rotulo="= Lucro" valor={brl(r.lucroLiquido)} forte />
@@ -188,13 +189,13 @@ export default function Relatorios({ dados }: { dados: Dados }) {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Cartao titulo="Dias de caixa" valor={doMes.length} />
           <Cartao titulo="Faturamento" valor={brl(soma((r) => r.faturamento))} cor="azul" />
-          <Cartao titulo="Espetos vendidos" valor={soma((r) => r.espetosVendidos)} cor="laranja" />
+          <Cartao titulo="Taxa de serviço (garçons)" valor={brl(soma((r) => r.servico))} cor="laranja" />
           <Cartao titulo="Custos + despesas" valor={brl(soma((r) => r.cmv + r.taxas + r.despesas))} />
           <Cartao titulo="Lucro" valor={brl(soma((r) => r.lucroLiquido))} cor={soma((r) => r.lucroLiquido) >= 0 ? 'verde' : 'vermelho'} />
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="rounded-xl bg-stone-50 p-3 text-sm">
-            <div className="font-bold">Compras de carne/insumos/bebidas no mês: {brl(totalCompras)}</div>
+            <div className="font-bold">Compras de insumos/bebidas no mês: {brl(totalCompras)}</div>
             <p className="text-stone-600">Dinheiro gasto para repor estoque. O lucro acima usa o custo do que foi vendido (o que sobrou no estoque ainda vale dinheiro).</p>
             {comprasMes.length > 0 && (
               <ul className="mt-1 text-stone-700">

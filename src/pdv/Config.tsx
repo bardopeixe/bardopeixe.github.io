@@ -2,15 +2,28 @@ import qrcode from 'qrcode-generator'
 import { useRef, useState, useSyncExternalStore } from 'react'
 import { assinarInstalar, instalarApp, linkConectar, podeInstalar, rodandoComoApp } from './conectar'
 import { codigoAppsScript } from './appsScript'
-import { aplicarBackup, montarBackup, novoId, type Dados } from './dados'
+import { NOMES_CATEGORIA, aplicarBackup, brl, montarBackup, novoId, type Dados } from './dados'
 import type { Pasta } from './pasta'
 import { urlValida, type Planilha } from './planilha'
 import { imprimirTeste } from './impressao'
 import { lerChaveIA, salvarChaveIA, testarChave } from './notaIA'
-import type { Config } from './tipos'
+import type { Adicional, Categoria, Config } from './tipos'
+import { ConfigGarcons, type GarcomPdv } from './Garcons'
 import { CampoNumero, CampoTexto, Modal, btn } from './ui'
 
-export default function ConfigTela({ dados, planilha, pasta }: { dados: Dados; planilha: Planilha; pasta: Pasta }) {
+export default function ConfigTela({
+  dados,
+  planilha,
+  pasta,
+  garcom,
+  irParaOnline,
+}: {
+  dados: Dados
+  planilha: Planilha
+  pasta: Pasta
+  garcom: GarcomPdv
+  irParaOnline: () => void
+}) {
   const { config, setConfig } = dados
   const set = (m: Partial<Config>) => setConfig((c) => ({ ...c, ...m }))
   const [novaObs, setNovaObs] = useState('')
@@ -21,7 +34,7 @@ export default function ConfigTela({ dados, planilha, pasta }: { dados: Dados; p
     const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `backup-espetinho-${new Date().toISOString().slice(0, 10)}.json`
+    a.download = `backup-bar-do-peixe-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     setTimeout(() => URL.revokeObjectURL(a.href), 1000)
   }
@@ -40,6 +53,37 @@ export default function ConfigTela({ dados, planilha, pasta }: { dados: Dados; p
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      <section className="rounded-2xl border-2 border-orange-300 bg-white p-4">
+        <h2 className="text-lg font-extrabold">🍽️ Taxa de serviço (mesas)</h2>
+        <p className="text-sm text-stone-600">
+          Entra só na conta das mesas (comandas). Balcão, retirada e delivery não pagam. Na hora de receber, o caixa pode desmarcar se o cliente não quiser
+          pagar. O valor aparece separado no fechamento do caixa (para repassar aos garçons) e não conta como lucro.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 font-bold">
+            <input
+              type="checkbox"
+              className="h-6 w-6 accent-orange-700"
+              checked={!!config.taxaServico?.ativa}
+              onChange={(e) => set({ taxaServico: { pct: config.taxaServico?.pct || 10, ativa: e.target.checked } })}
+            />
+            Cobrar taxa de serviço
+          </label>
+          {config.taxaServico?.ativa && (
+            <CampoNumero
+              className="w-32"
+              valor={config.taxaServico.pct}
+              aoMudar={(v) => set({ taxaServico: { ativa: true, pct: Math.max(0, Math.min(30, v)) } })}
+              sufixo="%"
+            />
+          )}
+        </div>
+      </section>
+
+      <ConfigAdicionais dados={dados} />
+
+      <ConfigGarcons dados={dados} garcom={garcom} irParaOnline={irParaOnline} />
+
       <section className="rounded-2xl border-2 border-stone-200 bg-white p-4">
         <h2 className="text-lg font-extrabold">Dados do cupom</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -71,12 +115,13 @@ export default function ConfigTela({ dados, planilha, pasta }: { dados: Dados; p
           {(
             [
               ['imprimirAoFinalizar', 'Imprimir automaticamente ao finalizar o pedido'],
-              ['viaChurrasqueira', 'Imprimir via da churrasqueira (letra grande, sem preços)'],
+              ['viaChurrasqueira', 'Imprimir comanda da cozinha (letra grande, sem preços)'],
               ['viaCliente', 'Imprimir via do cliente (com preços e troco)'],
+              ['cozinhaSemBebidas', 'Comanda da cozinha sem bebidas (só sai o que a cozinha prepara)'],
             ] as const
           ).map(([k, rotulo]) => (
             <label key={k} className="flex items-center gap-2 font-semibold">
-              <input type="checkbox" className="h-5 w-5 accent-orange-600" checked={config[k]} onChange={(e) => set({ [k]: e.target.checked })} />
+              <input type="checkbox" className="h-5 w-5 accent-orange-600" checked={!!config[k]} onChange={(e) => set({ [k]: e.target.checked })} />
               {rotulo}
             </label>
           ))}
@@ -88,7 +133,7 @@ export default function ConfigTela({ dados, planilha, pasta }: { dados: Dados; p
             <li>
               Nas preferências da impressora (Painel de Controle → Impressoras → Waytech → Preferências de impressão → Avançado/Configurações do papel), escolha
               o papel <b>80 mm</b> e deixe o <b>corte automático “ao fim de cada página”</b> (às vezes aparece como “Cut per page” / “Corte por página”). O sistema
-              manda cada via como uma página do tamanho exato do conteúdo — a via da churrasqueira sai cortada separada da via do cliente.
+              manda cada via como uma página do tamanho exato do conteúdo — a comanda da cozinha sai cortada separada da via do cliente.
             </li>
             <li>
               Na primeira impressão pelo Chrome: destino <b>Waytech</b>, margens <b>Nenhuma</b>, escala <b>100%</b>, e desmarque “Cabeçalhos e rodapés”. O
@@ -461,7 +506,7 @@ function SecaoPasta({ dados, pasta }: { dados: Dados; pasta: Pasta }) {
               aparecer o disco/pasta <b>“Google Drive”</b> no computador.
             </li>
             <li>
-              Dentro de <b>Google Drive → Meu Drive</b>, crie uma pasta chamada <b>PDV Espetinho</b>.
+              Dentro de <b>Google Drive → Meu Drive</b>, crie uma pasta chamada <b>PDV Bar do Peixe</b>.
             </li>
             <li>
               Clique abaixo, escolha essa pasta e confirme “Permitir” / “Salvar alterações”. Se o Chrome oferecer <b>“Permitir em todas as visitas”</b>,
@@ -518,7 +563,7 @@ function SecaoPasta({ dados, pasta }: { dados: Dados; pasta: Pasta }) {
             </div>
           )}
           <p className="mt-2 text-xs text-stone-500">
-            Arquivos gravados: <b>pdv-espetinho-backup.json</b> (tudo, para restaurar), <b>Caixas.csv</b>, <b>Pedidos.csv</b>, <b>Itens vendidos.csv</b>,{' '}
+            Arquivos gravados: <b>pdv-bar-do-peixe-backup.json</b> (tudo, para restaurar), <b>Caixas.csv</b>, <b>Pedidos.csv</b>, <b>Itens vendidos.csv</b>,{' '}
             <b>Estoque.csv</b>, <b>Despesas.csv</b> (abrem no Excel e no Google Planilhas) e uma cópia por dia em <b>backups-diarios</b>. Em outro
             computador: escolha a mesma pasta do Drive e o sistema pergunta se quer usar os dados de lá.
           </p>
@@ -761,6 +806,62 @@ function ZerarMovimento({ dados, baixarBackup }: { dados: Dados; baixarBackup: (
             Baixar backup e zerar
           </button>
         </Modal>
+      )}
+    </section>
+  )
+}
+
+const CATS_ADICIONAL: Categoria[] = ['prato', 'porcao', 'outro', 'combo', 'espeto']
+
+/** Configurações → Adicionais dos pratos (ovo frito +R$ 3…). */
+function ConfigAdicionais({ dados }: { dados: Dados }) {
+  const lista = dados.config.adicionais ?? []
+  const set = (a: Adicional[]) => dados.setConfig((c) => ({ ...c, adicionais: a }))
+  const mudar = (id: string, m: Partial<Adicional>) => set(lista.map((x) => (x.id === id ? { ...x, ...m } : x)))
+  return (
+    <section className="rounded-2xl border-2 border-stone-200 bg-white p-4">
+      <h2 className="text-lg font-extrabold">➕ Adicionais dos pratos</h2>
+      <p className="text-sm text-stone-600">
+        Aparecem no pedido (toque em “+ observação / adicionais”), no celular do garçom e no cardápio digital, nos produtos das categorias marcadas. O preço
+        soma no item e sai escrito na comanda da cozinha.
+      </p>
+      <ul className="mt-3 space-y-3">
+        {lista.map((a) => (
+          <li key={a.id} className={`rounded-xl border-2 p-3 ${a.ativo ? 'border-stone-200' : 'border-stone-100 opacity-60'}`}>
+            <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[2fr_1fr_1fr_auto]">
+              <CampoTexto className="col-span-2 sm:col-span-1" rotulo="Adicional" valor={a.nome} aoMudar={(v) => mudar(a.id, { nome: v })} />
+              <CampoNumero rotulo="Preço" prefixo="R$" valor={a.preco} aoMudar={(v) => mudar(a.id, { preco: v })} />
+              <CampoNumero rotulo="Custo" prefixo="R$" valor={a.custo ?? 0} aoMudar={(v) => mudar(a.id, { custo: v })} />
+              <button className="px-2 pb-2 text-xl text-stone-400 hover:text-red-600" onClick={() => confirm(`Apagar o adicional ${a.nome}?`) && set(lista.filter((x) => x.id !== a.id))} aria-label="Apagar">
+                ×
+              </button>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-sm">
+              <label className="mr-2 flex items-center gap-1.5 font-semibold">
+                <input type="checkbox" className="h-4 w-4" checked={a.ativo} onChange={(e) => mudar(a.id, { ativo: e.target.checked })} /> ativo
+              </label>
+              <span className="text-stone-500">em:</span>
+              {CATS_ADICIONAL.map((c) => {
+                const tem = a.categorias.includes(c)
+                return (
+                  <button
+                    key={c}
+                    onClick={() => mudar(a.id, { categorias: tem ? a.categorias.filter((x) => x !== c) : [...a.categorias, c] })}
+                    className={`rounded-full px-3 py-1 font-semibold ${tem ? 'bg-orange-700 text-white' : 'bg-stone-100 text-stone-600'}`}
+                  >
+                    {NOMES_CATEGORIA[c]}
+                  </button>
+                )
+              })}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <button className={`${btn.secundario} mt-3`} onClick={() => set([...lista, { id: novoId(), nome: '', preco: 0, categorias: ['prato'], ativo: true }])}>
+        + Adicional
+      </button>
+      {lista.length > 0 && (
+        <p className="mt-2 text-xs text-stone-500">Ex.: {lista.filter((a) => a.ativo).slice(0, 3).map((a) => `${a.nome} ${brl(a.preco)}`).join(' · ')}</p>
       )}
     </section>
   )

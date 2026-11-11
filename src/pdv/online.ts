@@ -1,13 +1,23 @@
 import { conexaoFirebase } from '../nuvem/conta'
 import { secaoDe, SECOES, esgotado } from './catalogo'
-import type { ConfigOnline, Produto, TipoChavePix } from './tipos'
+import type { Adicional, ConfigOnline, Produto, TipoChavePix } from './tipos'
 
 /**
- * Cardápio digital: o PDV publica o cardápio no Firebase (doc espetinho/loja) e os clientes
- * mandam pedidos para a coleção espetinho_pedidos. O PDV escuta os pedidos e avisa com som.
+ * Cardápio digital e garçom no celular (Firebase do Bar do Peixe):
+ * - o PDV publica o cardápio em restaurante/loja (preços, esgotados, adicionais, aberto/fechado);
+ * - os clientes mandam pedidos de entrega/retirada para a coleção `pedidos`;
+ * - os garçons mandam os pedidos das mesas para `pedidos_mesa`; o PDV lança na comanda da mesa
+ *   e imprime a comanda da cozinha;
+ * - a lista de garçons autorizados fica em equipe/garcons (só o dono muda).
  */
 
-export const URL_CARDAPIO = 'https://plisselab.github.io/cardapio/'
+export const URL_CARDAPIO = 'https://bardopeixe.github.io/'
+export const URL_GARCOM = 'https://bardopeixe.github.io/garcom/'
+
+const COL_LOJA = 'restaurante'
+const COL_PEDIDOS = 'pedidos'
+const COL_CLIENTES = 'clientes'
+const COL_MESA = 'pedidos_mesa'
 
 // ---------------- tipos guardados na nuvem ----------------
 
@@ -26,9 +36,20 @@ export interface ComponenteOnline {
   opcoes: OpcaoOnline[]
 }
 
+export interface AdicionalOnline {
+  id: string
+  nome: string
+  preco: number
+}
+
 export interface ProdutoOnline {
   id: string
   nome: string
+  categoria?: string
+  /** Adicionais que o cliente/garçom pode escolher (ovo frito…). */
+  adicionais?: AdicionalOnline[]
+  /** Só aparece para o garçom (fora do delivery/cardápio digital). */
+  soMesa?: boolean
   descricao: string
   preco: number
   emoji: string
@@ -55,6 +76,8 @@ export interface LojaOnline {
   pix: { chave: string; nome: string; cidade: string } | null
   secoes: string[]
   produtos: ProdutoOnline[]
+  /** Observações de um toque (sem salada, sem cebola…), para o garçom. */
+  obsRapidas?: string[]
   atualizadoEm: string
 }
 
@@ -78,6 +101,33 @@ export interface ItemOnline {
   preco: number
   obs: string
   escolhas?: { produtoId: string; nome: string; qtd: number }[]
+  adicionais?: AdicionalOnline[]
+}
+
+// ---------------- garçom ----------------
+
+export type StatusMesa = 'novo' | 'lancado' | 'recusado'
+
+/** Pedido que o garçom lança pelo celular para uma mesa. */
+export interface PedidoMesa {
+  id: string
+  uid: string
+  garcom: { nome: string; email: string }
+  mesa: string
+  itens: ItemOnline[]
+  total: number
+  status: StatusMesa
+  criadoEm: string
+  atualizadoEm?: string
+  /** Comanda em que o PDV lançou. */
+  comanda?: number
+  motivo?: string
+}
+
+export interface EquipeGarcons {
+  emails: string[]
+  nomes: Record<string, string>
+  atualizadoEm: string
 }
 
 export interface PedidoOnline {
@@ -148,13 +198,17 @@ export function montarLojaOnline(args: {
   telefone: string
   espetoHoje: boolean
   online: ConfigOnline
+  adicionais?: Adicional[]
+  obsRapidas?: string[]
 }): LojaOnline {
   const { produtos, online } = args
+  const adicionaisAtivos = (args.adicionais ?? []).filter((a) => a.ativo && a.nome.trim())
   const porId = new Map(produtos.map((p) => [p.id, p]))
   let fotos = 0
   const lista: ProdutoOnline[] = []
   for (const p of produtos) {
-    if (!p.ativo || p.preco <= 0 || p.foraDoCardapio || p.foraDoDelivery) continue
+    if (!p.ativo || p.preco <= 0) continue
+    const soMesa = Boolean(p.foraDoCardapio || p.foraDoDelivery)
     if (!args.espetoHoje && (p.categoria === 'espeto' || p.categoria === 'combo')) continue
     const secao = secaoDe(p)
     const item: ProdutoOnline = {
@@ -166,7 +220,11 @@ export function montarLojaOnline(args: {
       secao,
       alcool: ALCOOL.has(secao),
       esgotado: esgotado(p, produtos),
+      categoria: p.categoria,
     }
+    if (soMesa) item.soMesa = true
+    const ads = adicionaisAtivos.filter((a) => a.categorias.includes(p.categoria))
+    if (ads.length) item.adicionais = ads.map((a) => ({ id: a.id, nome: a.nome.trim(), preco: a.preco }))
     if (p.imagem && fotos + p.imagem.length < LIMITE_FOTOS) {
       item.imagem = p.imagem
       fotos += p.imagem.length
@@ -209,6 +267,7 @@ export function montarLojaOnline(args: {
     pedidoMinimo: online.pedidoMinimo,
     pix: online.pixAntecipado && chave && online.pixNome.trim() ? { chave, nome: online.pixNome.trim(), cidade: online.pixCidade.trim() || 'BRASIL' } : null,
     secoes: ordem,
+    obsRapidas: args.obsRapidas ?? [],
     produtos: lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true })),
     atualizadoEm: new Date().toISOString(),
   }
@@ -277,13 +336,13 @@ export async function firebase() {
 
 export async function publicarLoja(loja: LojaOnline) {
   const { db, fs } = await firebase()
-  await fs.setDoc(fs.doc(db, 'espetinho', 'loja'), loja)
+  await fs.setDoc(fs.doc(db, COL_LOJA, 'loja'), loja)
 }
 
 export async function ouvirLoja(aoMudar: (l: LojaOnline | null) => void, aoErro: (e: unknown) => void) {
   const { db, fs } = await firebase()
   return fs.onSnapshot(
-    fs.doc(db, 'espetinho', 'loja'),
+    fs.doc(db, COL_LOJA, 'loja'),
     (d) => aoMudar(d.exists() ? (d.data() as LojaOnline) : null),
     aoErro,
   )
@@ -293,7 +352,7 @@ export async function ouvirLoja(aoMudar: (l: LojaOnline | null) => void, aoErro:
 export async function ouvirPedidosDaLoja(aoMudar: (ps: PedidoOnline[]) => void, aoErro: (e: unknown) => void) {
   const { db, fs } = await firebase()
   return fs.onSnapshot(
-    fs.query(fs.collection(db, 'espetinho_pedidos'), fs.orderBy('criadoEm', 'desc'), fs.limit(80)),
+    fs.query(fs.collection(db, COL_PEDIDOS), fs.orderBy('criadoEm', 'desc'), fs.limit(80)),
     (snap) => aoMudar(snap.docs.map((d) => ({ ...(d.data() as PedidoOnline), id: d.id }))),
     aoErro,
   )
@@ -303,7 +362,7 @@ export async function ouvirPedidosDaLoja(aoMudar: (ps: PedidoOnline[]) => void, 
 export async function ouvirMeusPedidos(uid: string, aoMudar: (ps: PedidoOnline[]) => void, aoErro: (e: unknown) => void) {
   const { db, fs } = await firebase()
   return fs.onSnapshot(
-    fs.query(fs.collection(db, 'espetinho_pedidos'), fs.where('uid', '==', uid)),
+    fs.query(fs.collection(db, COL_PEDIDOS), fs.where('uid', '==', uid)),
     (snap) => aoMudar(snap.docs.map((d) => ({ ...(d.data() as PedidoOnline), id: d.id })).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))),
     aoErro,
   )
@@ -311,14 +370,14 @@ export async function ouvirMeusPedidos(uid: string, aoMudar: (ps: PedidoOnline[]
 
 export async function enviarPedido(p: Omit<PedidoOnline, 'id'>) {
   const { db, fs } = await firebase()
-  const ref = await fs.addDoc(fs.collection(db, 'espetinho_pedidos'), p)
+  const ref = await fs.addDoc(fs.collection(db, COL_PEDIDOS), p)
   return ref.id
 }
 
 export async function mudarStatus(id: string, status: StatusOnline, extra: Partial<PedidoOnline> = {}) {
   const { db, fs } = await firebase()
   const limpo = Object.fromEntries(Object.entries(extra).filter(([, v]) => v !== undefined))
-  await fs.updateDoc(fs.doc(db, 'espetinho_pedidos', id), { ...limpo, status, atualizadoEm: new Date().toISOString() })
+  await fs.updateDoc(fs.doc(db, COL_PEDIDOS, id), { ...limpo, status, atualizadoEm: new Date().toISOString() })
 }
 
 export interface PerfilCliente {
@@ -329,13 +388,80 @@ export interface PerfilCliente {
 
 export async function lerPerfil(uid: string): Promise<PerfilCliente | null> {
   const { db, fs } = await firebase()
-  const d = await fs.getDoc(fs.doc(db, 'espetinho_clientes', uid))
+  const d = await fs.getDoc(fs.doc(db, COL_CLIENTES, uid))
   return d.exists() ? (d.data() as PerfilCliente) : null
 }
 
 export async function salvarPerfil(uid: string, p: PerfilCliente) {
   const { db, fs } = await firebase()
-  await fs.setDoc(fs.doc(db, 'espetinho_clientes', uid), p, { merge: true })
+  await fs.setDoc(fs.doc(db, COL_CLIENTES, uid), p, { merge: true })
+}
+
+// ---------------- garçom: nuvem ----------------
+
+/** PDV: grava quem pode lançar pedidos pelo celular. */
+export async function publicarGarcons(lista: { email: string; nome: string; ativo: boolean }[]) {
+  const { db, fs } = await firebase()
+  const ativos = lista.filter((g) => g.ativo && g.email.trim())
+  const equipe: EquipeGarcons = {
+    emails: ativos.map((g) => g.email.trim().toLowerCase()),
+    nomes: Object.fromEntries(ativos.map((g) => [g.email.trim().toLowerCase(), g.nome.trim()])),
+    atualizadoEm: new Date().toISOString(),
+  }
+  await fs.setDoc(fs.doc(db, 'equipe', 'garcons'), equipe)
+}
+
+/** Garçom: confere se o e-mail dele está liberado (as regras só deixam ler quem está na lista). */
+export async function lerEquipe(): Promise<EquipeGarcons | null> {
+  const { db, fs } = await firebase()
+  const d = await fs.getDoc(fs.doc(db, 'equipe', 'garcons'))
+  return d.exists() ? (d.data() as EquipeGarcons) : null
+}
+
+export async function enviarPedidoMesa(p: Omit<PedidoMesa, 'id'>) {
+  const { db, fs } = await firebase()
+  const ref = await fs.addDoc(fs.collection(db, COL_MESA), p)
+  return ref.id
+}
+
+/** PDV: pedidos dos garçons ainda não lançados, em tempo real. */
+export async function ouvirPedidosMesa(aoMudar: (ps: PedidoMesa[]) => void, aoErro: (e: unknown) => void) {
+  const { db, fs } = await firebase()
+  return fs.onSnapshot(
+    fs.query(fs.collection(db, COL_MESA), fs.where('status', '==', 'novo')),
+    (snap) => aoMudar(snap.docs.map((d) => ({ ...(d.data() as PedidoMesa), id: d.id })).sort((a, b) => a.criadoEm.localeCompare(b.criadoEm))),
+    aoErro,
+  )
+}
+
+/** Garçom: os próprios pedidos (para ver se o PDV lançou). */
+export async function ouvirMeusPedidosMesa(uid: string, aoMudar: (ps: PedidoMesa[]) => void, aoErro: (e: unknown) => void) {
+  const { db, fs } = await firebase()
+  return fs.onSnapshot(
+    fs.query(fs.collection(db, COL_MESA), fs.where('uid', '==', uid)),
+    (snap) => aoMudar(snap.docs.map((d) => ({ ...(d.data() as PedidoMesa), id: d.id })).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm)).slice(0, 30)),
+    aoErro,
+  )
+}
+
+/**
+ * PDV: "pega" o pedido do garçom para lançar. Só um computador consegue (transação):
+ * se dois PDVs estiverem abertos, o pedido não entra duas vezes.
+ */
+export async function pegarPedidoMesa(id: string, comanda: number) {
+  const { db, fs } = await firebase()
+  const ref = fs.doc(db, COL_MESA, id)
+  return fs.runTransaction(db, async (t) => {
+    const d = await t.get(ref)
+    if (!d.exists() || (d.data() as PedidoMesa).status !== 'novo') return false
+    t.update(ref, { status: 'lancado', comanda, atualizadoEm: new Date().toISOString() })
+    return true
+  })
+}
+
+export async function recusarPedidoMesa(id: string, motivo: string) {
+  const { db, fs } = await firebase()
+  await fs.updateDoc(fs.doc(db, COL_MESA, id), { status: 'recusado', motivo, atualizadoEm: new Date().toISOString() })
 }
 
 /** Regras de segurança do Firestore (o dono cola no console do Firebase). */
@@ -349,20 +475,27 @@ service cloud.firestore {
     function logado() {
       return request.auth != null;
     }
-
-    // Loja (plissê lab): histórico de pedidos de cada cliente
-    match /usuarios/{uid}/{doc=**} {
-      allow read, write: if logado() && request.auth.uid == uid;
+    // garçom: e-mail confirmado e liberado no PDV (Configurações → Garçons)
+    function garcom() {
+      return logado()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in get(/databases/$(database)/documents/equipe/garcons).data.emails;
     }
 
-    // Espetinho: cardápio publicado pelo PDV (todo mundo vê, só o dono muda)
-    match /espetinho/{doc} {
+    // Cardápio publicado pelo PDV (todo mundo vê, só o dono muda)
+    match /${COL_LOJA}/{doc} {
       allow read: if true;
       allow write: if dono();
     }
 
-    // Espetinho: pedidos do cardápio digital
-    match /espetinho_pedidos/{id} {
+    // Lista de garçons liberados (o garçom só lê se o e-mail dele estiver nela)
+    match /equipe/garcons {
+      allow read: if dono() || (logado() && request.auth.token.email.lower() in resource.data.emails);
+      allow write: if dono();
+    }
+
+    // Pedidos de entrega/retirada do cardápio digital
+    match /${COL_PEDIDOS}/{id} {
       allow create: if logado()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.status == 'novo'
@@ -370,7 +503,7 @@ service cloud.firestore {
         && request.resource.data.itens.size() > 0
         && request.resource.data.itens.size() <= 60;
       allow read: if dono() || (logado() && resource.data.uid == request.auth.uid);
-      // o cliente só pode cancelar enquanto a loja não aceitou
+      // o cliente só pode cancelar enquanto o restaurante não aceitou
       allow update: if dono() || (logado()
         && resource.data.uid == request.auth.uid
         && resource.data.status == 'novo'
@@ -379,8 +512,19 @@ service cloud.firestore {
       allow delete: if dono();
     }
 
-    // Espetinho: dados de entrega salvos do cliente
-    match /espetinho_clientes/{uid} {
+    // Pedidos das mesas lançados pelos garçons
+    match /${COL_MESA}/{id} {
+      allow create: if garcom()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'novo'
+        && request.resource.data.itens.size() > 0
+        && request.resource.data.itens.size() <= 60;
+      allow read: if dono() || (logado() && resource.data.uid == request.auth.uid);
+      allow update, delete: if dono();
+    }
+
+    // Dados de entrega salvos do cliente
+    match /${COL_CLIENTES}/{uid} {
       allow read, write: if logado() && (request.auth.uid == uid || dono());
     }
   }

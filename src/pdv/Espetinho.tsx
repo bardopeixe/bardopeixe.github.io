@@ -17,6 +17,7 @@ import Relatorios from './Relatorios'
 import Cardapio from './Cardapio'
 import Venda from './Venda'
 import PedidosOnline, { AlertaPedidoOnline, useOnline } from './PedidosOnline'
+import { AvisosGarcom, useGarcomPdv } from './Garcons'
 
 type Aba = 'venda' | 'comandas' | 'online' | 'compras' | 'reposicao' | 'cardapio' | 'painel' | 'estoque' | 'caixa' | 'relatorios' | 'cadastros' | 'config'
 
@@ -41,6 +42,7 @@ export default function Espetinho() {
   const planilha = usePlanilha(dados)
   const pasta = usePasta(dados)
   const online = useOnline(dados)
+  const garcom = useGarcomPdv(dados, online)
   const [carregando, setCarregando] = useState(false)
   const [aba, setAba] = useState<Aba>('venda')
   const [gaveta, setGaveta] = useState(false)
@@ -326,6 +328,7 @@ export default function Espetinho() {
         </div>
       )}
       {aba !== 'online' && <AlertaPedidoOnline online={online} aoVer={() => irPara('online')} />}
+      <AvisosGarcom garcom={garcom} />
       <main className="mx-auto max-w-[1500px] p-3 sm:p-4">
         {aba === 'venda' && <Venda dados={dados} irPara={irPara} />}
         {aba === 'comandas' && <Comandas dados={dados} irPara={irPara} />}
@@ -338,7 +341,7 @@ export default function Espetinho() {
         {aba === 'caixa' && <CaixaTela dados={dados} irPara={irPara} />}
         {aba === 'relatorios' && <Relatorios dados={dados} />}
         {aba === 'cadastros' && <Cadastros dados={dados} />}
-        {aba === 'config' && <ConfigTela dados={dados} planilha={planilha} pasta={pasta} />}
+        {aba === 'config' && <ConfigTela dados={dados} planilha={planilha} pasta={pasta} garcom={garcom} irParaOnline={() => irPara('online')} />}
       </main>
       </div>
     </div>

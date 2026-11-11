@@ -1,5 +1,5 @@
 import { NOMES_FORMA, brl, data, espetosParaBrasa, hora, type Resumo } from './dados'
-import { fmtQtd, rotuloComanda } from './comanda'
+import { fmtQtd, rotuloComanda, servicoDaComanda } from './comanda'
 import type { Caixa, Comanda, Config, ItemComanda, Pedido } from './tipos'
 
 const esc = (s: string) =>
@@ -77,11 +77,20 @@ const blocoEntrega = (p: Pedido) =>
 const blocoViagem = (p: Pedido) =>
   p.viagem ? `<div class="viagem">${rotuloViagem(p)}</div>` : `<div class="local">COMER AQUI</div>`
 
-/** Via da churrasqueira: sem preço, letra enorme, só o que precisa ir pra brasa. */
-function viaChurrasqueira(p: Pedido, cab?: { rotulo: string; numero: number; aviso?: string }) {
+/** Itens que vão na comanda da cozinha (sem bebidas, se configurado). */
+const itensCozinha = <T extends { categoria: string }>(itens: T[], config: Config) =>
+  config.cozinhaSemBebidas ? itens.filter((i) => i.categoria !== 'bebida' && i.categoria !== 'drink') : itens
+
+/** Texto dos adicionais de um item (ex.: "+ OVO FRITO"). */
+const adicionaisTexto = (i: { adicionais?: { nome: string }[] }) => (i.adicionais ?? []).map((a) => `+ ${a.nome}`)
+
+/** Comanda da cozinha: sem preço, letra enorme, só o que a cozinha precisa preparar. */
+function viaChurrasqueira(p: Pedido, cab?: { rotulo: string; numero: number; aviso?: string; garcom?: string }) {
   const grupos: { titulo: string; itens: Pedido['itens'] }[] = [
+    { titulo: 'Pratos', itens: p.itens.filter((i) => i.categoria === 'prato') },
+    { titulo: 'Porções', itens: p.itens.filter((i) => i.categoria === 'porcao') },
     { titulo: 'Espetos', itens: p.itens.filter((i) => i.categoria === 'espeto') },
-    { titulo: 'Combos e jantinhas', itens: p.itens.filter((i) => i.categoria === 'combo') },
+    { titulo: 'Combos', itens: p.itens.filter((i) => i.categoria === 'combo') },
     { titulo: 'Acompanhamentos', itens: p.itens.filter((i) => i.categoria === 'outro') },
     { titulo: 'Bebidas', itens: p.itens.filter((i) => i.categoria === 'bebida') },
     { titulo: 'Bar — doses e drinks', itens: p.itens.filter((i) => i.categoria === 'drink') },
@@ -91,12 +100,13 @@ function viaChurrasqueira(p: Pedido, cab?: { rotulo: string; numero: number; avi
   const temCombo = p.itens.some((i) => i.escolhas?.length)
 
   return `<div class="via">
-    <div class="tag">VIA DA CHURRASQUEIRA</div>
+    <div class="tag">COMANDA DA COZINHA</div>
     <div class="num"><small>${cab?.rotulo ?? 'PEDIDO'}</small>Nº ${numPedido(cab?.numero ?? p.numero)}</div>
     ${cab?.aviso ? `<div class="local">${cab.aviso}</div>` : ''}
     <div class="c">${hora(p.criadoEm)} · ${data(p.criadoEm)}</div>
     ${cab ? "" : blocoViagem(p)}
     ${p.cliente ? `<div class="cliente">${esc(p.cliente)}</div>` : ''}
+    ${cab?.garcom ? `<div class="c">Garçom: <b>${esc(cab.garcom)}</b></div>` : ''}
     ${p.online?.obs ? `<div class="c grande">OBS.: ${esc(p.online.obs.toUpperCase())}</div>` : ''}
     ${p.viagem && p.embalagens?.length ? `<div class="c grande">EMBALAR: ${p.embalagens.map((e) => `${e.qtd} ${esc(e.nome.toUpperCase())}`).join(' + ')}</div>` : ''}
     ${grupos
@@ -107,6 +117,9 @@ function viaChurrasqueira(p: Pedido, cab?: { rotulo: string; numero: number; avi
           (i) => `<tr class="item"><td class="q">${i.qtd}x</td><td>${esc(i.nome.toUpperCase())}</td></tr>
           ${(i.escolhas ?? [])
             .map((e) => `<tr class="sub"><td></td><td>+ ${e.qtd * i.qtd} ${esc(e.nome.toUpperCase())}</td></tr>`)
+            .join('')}
+          ${adicionaisTexto(i)
+            .map((a) => `<tr class="sub"><td></td><td>${esc(a.toUpperCase())}</td></tr>`)
             .join('')}
           ${i.obs ? `<tr class="obs"><td class="seta r">&gt;&gt;</td><td>${esc(i.obs.toUpperCase())}</td></tr>` : ''}`,
         )
@@ -140,7 +153,7 @@ function viaCliente(p: Pedido, config: Config) {
     <table>
       ${p.itens
         .map(
-          (i) => `<tr class="linha"><td>${fmtQtd(i.qtd)}x ${esc(i.nome)}${i.escolhas?.length ? `<br><span class="peq">(${i.escolhas.map((e) => `${e.qtd * i.qtd} ${esc(e.nome)}`).join(', ')})</span>` : ''}${i.obs ? `<br><span class="peq">&gt; ${esc(i.obs)}</span>` : ''}</td>
+          (i) => `<tr class="linha"><td>${fmtQtd(i.qtd)}x ${esc(i.nome)}${i.adicionais?.length ? `<br><span class="peq">${esc(adicionaisTexto(i).join(' '))}</span>` : ''}${i.escolhas?.length ? `<br><span class="peq">(${i.escolhas.map((e) => `${e.qtd * i.qtd} ${esc(e.nome)}`).join(', ')})</span>` : ''}${i.obs ? `<br><span class="peq">&gt; ${esc(i.obs)}</span>` : ''}</td>
           <td class="r">${p.parte ? '' : brl(i.preco * i.qtd)}</td></tr>`,
         )
         .join('')}
@@ -148,9 +161,10 @@ function viaCliente(p: Pedido, config: Config) {
     ${p.parte ? `<div class="c peq">Sua parte dos itens acima</div>` : ''}
     <hr>
     <table>
-      ${p.desconto > 0 || p.taxaEntrega ? `<tr class="linha"><td>Subtotal</td><td class="r">${brl(p.subtotal)}</td></tr>` : ''}
+      ${p.desconto > 0 || p.taxaEntrega || p.taxaServico ? `<tr class="linha"><td>Subtotal</td><td class="r">${brl(p.subtotal)}</td></tr>` : ''}
       ${p.desconto > 0 ? `<tr class="linha"><td>Desconto</td><td class="r">-${brl(p.desconto)}</td></tr>` : ''}
       ${p.taxaEntrega ? `<tr class="linha"><td>Taxa de entrega</td><td class="r">${brl(p.taxaEntrega)}</td></tr>` : ''}
+      ${p.taxaServico ? `<tr class="linha"><td>Taxa de serviço</td><td class="r">${brl(p.taxaServico)}</td></tr>` : ''}
       <tr class="tot"><td>TOTAL</td><td class="r">${brl(p.total)}</td></tr>
       ${p.pagamentos.map((pg) => `<tr class="linha"><td>${NOMES_FORMA[pg.forma]}</td><td class="r">${brl(pg.valor)}</td></tr>`).join('')}
       ${p.recebidoDinheiro > 0 ? `<tr class="linha"><td>Recebido em dinheiro</td><td class="r">${brl(p.recebidoDinheiro)}</td></tr>` : ''}
@@ -207,10 +221,10 @@ function imprimirHTML(corpo: string, config: Config) {
 export function imprimirPedido(p: Pedido, config: Config, vias?: { churrasqueira: boolean; cliente: boolean }) {
   // via de preparo só quando tem algo para preparar (espeto, combo, dose/drink, acompanhamento);
   // venda só de bebida pronta (lata, garrafa, fardo) sai só com o cupom do cliente
-  const temPreparo = p.itens.some((i) => i.categoria !== 'bebida')
+  const temPreparo = itensCozinha(p.itens, config).some((i) => i.categoria !== 'bebida')
   const v = vias ?? { churrasqueira: config.viaChurrasqueira && temPreparo, cliente: config.viaCliente }
   const partes: string[] = []
-  if (v.churrasqueira) partes.push(viaChurrasqueira(p))
+  if (v.churrasqueira && itensCozinha(p.itens, config).length) partes.push(viaChurrasqueira({ ...p, itens: itensCozinha(p.itens, config) }))
   if (v.cliente) partes.push(viaCliente(p, config))
   if (!partes.length) partes.push(viaCliente(p, config))
   imprimirHTML(partes.join(''), config)
@@ -228,12 +242,14 @@ export function imprimirRelatorio(caixa: Caixa, r: Resumo, config: Config) {
     <table>
       ${linha('Pedidos', String(r.qtdPedidos))}
       ${linha('Para viagem', String(r.qtdViagem))}
-      ${linha('Espetos vendidos', String(r.espetosVendidos))}
+      ${linha('Itens vendidos', String(r.itensVendidos))}
       ${linha('Ticket médio', brl(r.ticketMedio))}
       ${r.descontos > 0 ? linha('Descontos dados', brl(r.descontos)) : ''}
       ${r.cancelados.length ? linha('Cancelados', String(r.cancelados.length)) : ''}
       ${linha('FATURAMENTO', brl(r.faturamento), 'tot')}
+      ${r.servico ? linha('(inclui taxa de serviço)', brl(r.servico)) : ''}
     </table>
+    ${r.servico ? `<hr class="forte"><div class="sec">Garçons</div><table>${linha('TAXA DE SERVIÇO A REPASSAR', brl(r.servico), 'tot')}</table>` : ''}
     <hr class="forte"><div class="sec">Por forma de pagamento</div>
     <table>
       ${linha('Dinheiro', brl(r.porForma.dinheiro))}
@@ -261,6 +277,7 @@ export function imprimirRelatorio(caixa: Caixa, r: Resumo, config: Config) {
     <hr class="forte"><div class="sec">Lucro</div>
     <table>
       ${linha('Faturamento', brl(r.faturamento))}
+      ${r.servico ? linha('- Taxa de serviço (garçons)', brl(r.servico)) : ''}
       ${linha('- Custo dos produtos', brl(r.cmv))}
       ${r.cortesias.qtd ? linha('  (cortesias/consumo)', brl(r.cortesias.custo)) : ''}
       ${linha('- Taxas maquininha', brl(r.taxas))}
@@ -292,14 +309,17 @@ export function imprimirTeste(config: Config) {
   imprimirHTML(
     `<div class="via">${cabecalhoLoja(config)}<div class="tag">TESTE DE IMPRESSÃO</div>
     <div class="num"><small>PEDIDO</small>Nº 000</div><div class="viagem">PARA VIAGEM</div>
-    <table><tr class="item"><td class="q">3x</td><td>CARNE</td></tr><tr class="obs"><td class="seta r">&gt;&gt;</td><td>BEM PASSADO</td></tr></table>
+    <table><tr class="item"><td class="q">3x</td><td>TILÁPIA M</td></tr><tr class="obs"><td class="seta r">&gt;&gt;</td><td>SEM SALADA</td></tr></table>
     <hr><div class="c">Papel de ${config.larguraPapel} mm. Se cortou nas bordas, troque a largura nas configurações.</div></div>`,
     config,
   )
 }
 
-/** Itens novos lançados numa comanda: via da churrasqueira com a mesa e o número da comanda. */
-export function imprimirLancamento(c: Comanda, itens: ItemComanda[], config: Config, primeiro: boolean) {
+/** Itens novos lançados numa comanda: comanda da cozinha com a mesa e o número da comanda. */
+export function imprimirLancamento(c: Comanda, itensLancados: ItemComanda[], config: Config, primeiro: boolean) {
+  const itens = itensCozinha(itensLancados, config)
+  if (!itens.length) return
+  const garcons = [...new Set(itens.map((i) => i.garcom).filter(Boolean))].join(', ')
   const p = {
     numero: c.numero,
     criadoEm: new Date().toISOString(),
@@ -307,7 +327,7 @@ export function imprimirLancamento(c: Comanda, itens: ItemComanda[], config: Con
     viagem: false,
     itens,
   } as unknown as Pedido
-  imprimirHTML(viaChurrasqueira(p, { rotulo: 'COMANDA', numero: c.numero, aviso: primeiro ? undefined : 'MAIS ITENS' }), config)
+  imprimirHTML(viaChurrasqueira(p, { rotulo: 'COMANDA', numero: c.numero, aviso: primeiro ? undefined : 'MAIS ITENS', garcom: garcons || undefined }), config)
 }
 
 /** Conferência da conta para o cliente ver antes de pagar (não é o cupom de pagamento). */
@@ -319,6 +339,8 @@ export function imprimirConferencia(
 ) {
   const total = linhas.reduce((s, l) => s + l.item.preco * l.item.qtd, 0)
   const falta = linhas.reduce((s, l) => s + l.item.preco * l.falta, 0)
+  const pct = servicoDaComanda(c, config)
+  const servico = Math.round(falta * pct) / 100
   imprimirHTML(
     `<div class="via">
     ${cabecalhoLoja(config)}
@@ -330,7 +352,7 @@ export function imprimirConferencia(
     <table>
       ${linhas
         .map(
-          (l) => `<tr class="linha"><td>${l.item.qtd}x ${esc(l.item.nome)}${l.item.escolhas?.length ? `<br><span class="peq">(${l.item.escolhas.map((e) => `${e.qtd * l.item.qtd} ${esc(e.nome)}`).join(', ')})</span>` : ''}${l.pago > 0.0005 ? `<br><span class="peq">já pago: ${fmtQtd(l.pago)}</span>` : ''}</td><td class="r">${brl(l.item.preco * l.item.qtd)}</td></tr>`,
+          (l) => `<tr class="linha"><td>${l.item.qtd}x ${esc(l.item.nome)}${l.item.adicionais?.length ? `<br><span class="peq">${esc(adicionaisTexto(l.item).join(' '))}</span>` : ''}${l.item.escolhas?.length ? `<br><span class="peq">(${l.item.escolhas.map((e) => `${e.qtd * l.item.qtd} ${esc(e.nome)}`).join(', ')})</span>` : ''}${l.pago > 0.0005 ? `<br><span class="peq">já pago: ${fmtQtd(l.pago)}</span>` : ''}</td><td class="r">${brl(l.item.preco * l.item.qtd)}</td></tr>`,
         )
         .join('')}
     </table>
@@ -338,7 +360,13 @@ export function imprimirConferencia(
     <table>
       <tr class="linha"><td>Total consumido</td><td class="r">${brl(total)}</td></tr>
       ${total - falta > 0.004 ? `<tr class="linha"><td>Já pago</td><td class="r">-${brl(total - falta)}</td></tr>` : ''}
-      <tr class="tot"><td>A PAGAR</td><td class="r">${brl(falta)}</td></tr>
+      ${
+        pct > 0 && falta > 0
+          ? `<tr class="linha"><td>Consumo</td><td class="r">${brl(falta)}</td></tr>
+      <tr class="linha"><td>Serviço ${pct.toLocaleString('pt-BR')}% (opcional)</td><td class="r">${brl(servico)}</td></tr>
+      <tr class="tot"><td>A PAGAR</td><td class="r">${brl(falta + servico)}</td></tr>`
+          : `<tr class="tot"><td>A PAGAR</td><td class="r">${brl(falta)}</td></tr>`
+      }
       ${divisao ? `<tr class="linha"><td>Faltam ${divisao.faltam} pessoa(s)</td><td class="r">${brl(divisao.valor)} cada</td></tr>` : ''}
     </table>
     <hr><div class="rodape peq">CONFERÊNCIA — NÃO É DOCUMENTO FISCAL</div>
@@ -364,7 +392,7 @@ export function imprimirContaCompleta(c: Comanda, pagos: Pedido[], config: Confi
     <table>
       ${c.itens
         .map(
-          (i) => `<tr class="linha"><td>${i.qtd}x ${esc(i.nome)}${i.escolhas?.length ? `<br><span class="peq">(${i.escolhas.map((e) => `${e.qtd * i.qtd} ${esc(e.nome)}`).join(', ')})</span>` : ''}</td><td class="r">${brl(i.preco * i.qtd)}</td></tr>`,
+          (i) => `<tr class="linha"><td>${i.qtd}x ${esc(i.nome)}${i.adicionais?.length ? `<br><span class="peq">${esc(adicionaisTexto(i).join(' '))}</span>` : ''}${i.escolhas?.length ? `<br><span class="peq">(${i.escolhas.map((e) => `${e.qtd * i.qtd} ${esc(e.nome)}`).join(', ')})</span>` : ''}</td><td class="r">${brl(i.preco * i.qtd)}</td></tr>`,
         )
         .join('')}
       <tr class="tot"><td>TOTAL</td><td class="r">${brl(total)}</td></tr>
@@ -378,6 +406,7 @@ export function imprimirContaCompleta(c: Comanda, pagos: Pedido[], config: Confi
         )
         .join('')}
       ${descontos > 0 ? `<tr class="linha"><td>Descontos</td><td class="r">-${brl(descontos)}</td></tr>` : ''}
+      ${pagos.some((p) => p.taxaServico) ? `<tr class="linha"><td>Taxa de serviço</td><td class="r">${brl(pagos.reduce((s, p) => s + (p.taxaServico ?? 0), 0))}</td></tr>` : ''}
       <tr class="tot"><td>PAGO</td><td class="r">${brl(recebido)}</td></tr>
       ${falta > 0.004 ? `<tr class="tot"><td>FALTA</td><td class="r">${brl(falta)}</td></tr>` : '<tr class="linha"><td colspan="2" class="c"><b>CONTA QUITADA</b></td></tr>'}
     </table>

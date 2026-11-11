@@ -3,7 +3,7 @@ import type { Caixa, Comanda, Config, ItemComanda, ItemPedido, Pagamento, Pedido
 
 /**
  * Regras da comanda (mesa que vai pedindo aos poucos):
- * - os itens saem do estoque quando são lançados (vão para a brasa);
+ * - os itens saem do estoque quando são lançados (vão para a cozinha);
  * - cada pagamento vira um pedido no caixa aberto, com os itens (ou frações deles) que quitou;
  * - quanto falta de cada item é calculado pelos pagamentos não cancelados — cancelar um pagamento reabre a conta.
  */
@@ -50,6 +50,12 @@ export function statusComanda(c: Comanda, pedidos: Pedido[]): StatusComanda {
   return saldoComanda(c, pedidos) > 0.004 ? 'aberta' : 'paga'
 }
 
+/** % da taxa de serviço para esta comanda (só mesa: o "Balcão" da conta dividida não paga). */
+export function servicoDaComanda(c: Pick<Comanda, 'mesa'>, config: Pick<Config, 'taxaServico'>) {
+  if (!config.taxaServico?.ativa || !(config.taxaServico.pct > 0)) return 0
+  return c.mesa.trim().toLowerCase() === 'balcão' ? 0 : config.taxaServico.pct
+}
+
 export const rotuloComanda = (c: Pick<Comanda, 'mesa' | 'nome'>) =>
   [c.mesa ? (/^\d+$/.test(c.mesa.trim()) ? `Mesa ${c.mesa.trim()}` : c.mesa.trim()) : '', c.nome.trim()].filter(Boolean).join(' · ') || 'Sem nome'
 
@@ -88,6 +94,8 @@ export function criarPedidoDaComanda(args: {
   /** Valor a cobrar (ao dividir pode diferir centavos da soma dos itens). */
   valor: number
   desconto: number
+  /** Taxa de serviço (garçom) cobrada junto. */
+  taxaServico?: number
   pagamentos: Pagamento[]
   recebidoDinheiro: number
   caixa: Caixa
@@ -95,7 +103,7 @@ export function criarPedidoDaComanda(args: {
   config: Config
   parte?: { divisaoId: string; texto: string }
 }): Pedido {
-  const { comanda, alocacao, valor, desconto, pagamentos, recebidoDinheiro, caixa, pedidos, config, parte } = args
+  const { comanda, alocacao, valor, desconto, taxaServico = 0, pagamentos, recebidoDinheiro, caixa, pedidos, config, parte } = args
   const itens: ItemPedido[] = alocacao
     .filter((a) => a.qtd > EPS)
     .map((a) => ({
@@ -108,10 +116,11 @@ export function criarPedidoDaComanda(args: {
       qtd: a.qtd,
       obs: a.item.obs,
       ...(a.item.escolhas?.length ? { escolhas: a.item.escolhas } : {}),
+      ...(a.item.adicionais?.length ? { adicionais: a.item.adicionais } : {}),
       comandaItemId: a.item.id,
     }))
   const subtotal = arred(valor)
-  const total = arred(subtotal - desconto)
+  const total = arred(subtotal - desconto + taxaServico)
   const emDinheiro = pagamentos.filter((p) => p.forma === 'dinheiro').reduce((s, p) => s + p.valor, 0)
   return {
     id: novoId(),
@@ -124,6 +133,7 @@ export function criarPedidoDaComanda(args: {
     subtotal,
     desconto,
     total,
+    ...(taxaServico > 0 ? { taxaServico: arred(taxaServico) } : {}),
     pagamentos: pagamentos.filter((p) => p.valor > 0),
     recebidoDinheiro: recebidoDinheiro > 0 ? recebidoDinheiro : 0,
     troco: recebidoDinheiro > emDinheiro ? arred(recebidoDinheiro - emDinheiro) : 0,

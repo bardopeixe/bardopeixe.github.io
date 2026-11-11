@@ -85,7 +85,7 @@ function gravarMeta(m: MetaPasta) {
 async function salvarTudo(pasta: FileSystemDirectoryHandle, d: Dados) {
   const obj = { ...montarBackup(d), aparelho: aparelho() }
   const backup = JSON.stringify(obj)
-  await gravar(pasta, 'pdv-espetinho-backup.json', backup)
+  await gravar(pasta, 'pdv-bar-do-peixe-backup.json', backup)
   // uma cópia por dia, para voltar no tempo se precisar
   const dia = new Date().toLocaleDateString('sv-SE') // AAAA-MM-DD no fuso local
   const hist = await pasta.getDirectoryHandle('backups-diarios', { create: true })
@@ -121,7 +121,7 @@ export function usePasta(dados: Dados) {
       }
       ocupado.current = true
       const versao = await salvarTudo(p, dadosRef.current)
-      const arq = await (await p.getFileHandle('pdv-espetinho-backup.json')).getFile()
+      const arq = await (await p.getFileHandle('pdv-bar-do-peixe-backup.json')).getFile()
       gravarMeta({ versao, pendente: false, modificado: arq.lastModified })
       setEstado({ tipo: 'ok', nome: p.name, em: new Date().toISOString() })
     } catch (e) {
@@ -141,7 +141,7 @@ export function usePasta(dados: Dados) {
     if ((await p.queryPermission({ mode: 'readwrite' })) !== 'granted') return
     let arq: File
     try {
-      arq = await (await p.getFileHandle('pdv-espetinho-backup.json')).getFile()
+      arq = await (await p.getFileHandle('pdv-bar-do-peixe-backup.json')).getFile()
     } catch {
       return // ainda não tem backup na pasta
     }
@@ -229,7 +229,7 @@ export function usePasta(dados: Dados) {
       // a pasta já tem dados (de outro computador)? pergunta antes de sobrescrever
       let existente: Partial<ReturnType<typeof montarBackup>> | null = null
       try {
-        const arq = await p.getFileHandle('pdv-espetinho-backup.json')
+        const arq = await p.getFileHandle('pdv-bar-do-peixe-backup.json')
         existente = JSON.parse(await (await arq.getFile()).text())
       } catch {
         existente = null
@@ -273,14 +273,14 @@ export function usePasta(dados: Dados) {
   const lerBackup = useCallback(async () => {
     if (!pasta) throw new Error('Escolha a pasta primeiro.')
     if ((await pasta.requestPermission({ mode: 'readwrite' })) !== 'granted') throw new Error('Sem permissão para ler a pasta.')
-    const arq = await pasta.getFileHandle('pdv-espetinho-backup.json')
+    const arq = await pasta.getFileHandle('pdv-bar-do-peixe-backup.json')
     return JSON.parse(await (await arq.getFile()).text())
   }, [pasta])
 
   /** Conflito: usar o que está na pasta (descarta as mudanças locais não gravadas). */
   const usarRemoto = useCallback(async () => {
     if (!pasta) return
-    const arq = await (await pasta.getFileHandle('pdv-espetinho-backup.json')).getFile()
+    const arq = await (await pasta.getFileHandle('pdv-bar-do-peixe-backup.json')).getFile()
     const b = JSON.parse(await arq.text())
     silenciarMudanca()
     aplicarBackup(dadosRef.current, b)

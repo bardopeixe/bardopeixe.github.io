@@ -8,6 +8,7 @@ import {
   restantes,
   rotuloComanda,
   saldoComanda,
+  servicoDaComanda,
   statusComanda,
   totalComanda,
 } from './comanda'
@@ -86,16 +87,19 @@ export default function Comandas({ dados, irPara }: { dados: Dados; irPara: (aba
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-extrabold">Comandas abertas</h2>
-          <p className="text-sm text-stone-600">Anote o que cada mesa vai pedindo e receba no final — tudo junto, por itens ou dividido.</p>
+          <h2 className="text-2xl font-extrabold">Mesas abertas</h2>
+          <p className="text-sm text-stone-600">
+            Anote o que cada mesa vai pedindo (aqui ou pelo celular do garçom) e receba no final — tudo junto, por itens ou dividido.
+            {dados.config.taxaServico?.ativa ? ` Taxa de serviço de ${dados.config.taxaServico.pct}% na hora de receber.` : ''}
+          </p>
         </div>
         <button className={`${btn.primario} text-lg`} onClick={() => setNova(true)}>
-          + Nova comanda
+          + Abrir mesa
         </button>
       </div>
 
       {abertas.length === 0 && (
-        <div className="rounded-2xl border-2 border-dashed border-stone-300 bg-white p-10 text-center text-stone-500">Nenhuma comanda aberta.</div>
+        <div className="rounded-2xl border-2 border-dashed border-stone-300 bg-white p-10 text-center text-stone-500">Nenhuma mesa aberta.</div>
       )}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {abertas.map((c) => {
@@ -153,10 +157,10 @@ function ModalNovaComanda({ abertas, aoFechar, aoAbrir }: { abertas: Comanda[]; 
   const [nome, setNome] = useState('')
   const ocupadas = new Set(abertas.map((c) => c.mesa))
   return (
-    <Modal titulo="Nova comanda" aberto aoFechar={aoFechar}>
+    <Modal titulo="Abrir mesa" aberto aoFechar={aoFechar}>
       <div className="text-sm font-semibold text-stone-600">Mesa</div>
       <div className="mt-1 grid grid-cols-6 gap-1.5 sm:grid-cols-8">
-        {Array.from({ length: 24 }, (_, i) => String(i + 1)).map((m) => (
+        {Array.from({ length: 30 }, (_, i) => String(i + 1)).map((m) => (
           <button
             key={m}
             onClick={() => setMesa(m)}
@@ -279,7 +283,7 @@ export function DetalheComanda({
     setSelecao({})
   }
 
-  function cobrar(desconto: number, pagamentos: Pagamento[], recebido: number) {
+  function cobrar(desconto: number, pagamentos: Pagamento[], recebido: number, taxaServico: number) {
     if (!caixaAberto || !cobrando) return
     let alocacao: { item: ItemComanda; qtd: number }[]
     let valor: number
@@ -296,7 +300,7 @@ export function DetalheComanda({
       valor = parte.valor
       parteInfo = { divisaoId: c.divisao.id, texto: `${parte.numero}/${parte.de}` }
     }
-    const pedido = criarPedidoDaComanda({ comanda: c, alocacao, valor, desconto, pagamentos, recebidoDinheiro: recebido, caixa: caixaAberto, pedidos, config, parte: parteInfo })
+    const pedido = criarPedidoDaComanda({ comanda: c, alocacao, valor, desconto, taxaServico, pagamentos, recebidoDinheiro: recebido, caixa: caixaAberto, pedidos, config, parte: parteInfo })
     setPedidos((ps) => [...ps, pedido])
     if (config.imprimirAoFinalizar && config.viaCliente) imprimirPedido(pedido, config, { churrasqueira: false, cliente: true })
     setUltimo(pedido)
@@ -333,6 +337,11 @@ export function DetalheComanda({
           <div className="text-sm text-stone-300">{saldo < total - 0.004 ? 'Falta pagar' : 'Total'}</div>
           <div className="text-4xl font-black">{brl(saldo)}</div>
           {saldo < total - 0.004 && <div className="text-sm text-stone-300">consumo total {brl(total)}</div>}
+          {aberta && saldo > 0 && servicoDaComanda(c, config) > 0 && (
+            <div className="text-sm text-stone-300">
+              + {servicoDaComanda(c, config)}% serviço = {brl(saldo * (1 + servicoDaComanda(c, config) / 100))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -403,7 +412,9 @@ export function DetalheComanda({
                     <div className="text-xs text-stone-500">
                       {hora(item.lancadoEm)}
                       {item.escolhas?.length ? ` · ${item.escolhas.map((e) => `${e.qtd}x ${e.nome}`).join(' + ')}` : ''}
+                      {item.adicionais?.length ? <span className="font-semibold text-emerald-700"> · {item.adicionais.map((a) => `+ ${a.nome}`).join(' ')}</span> : ''}
                       {item.obs ? ` · ${item.obs}` : ''}
+                      {item.garcom ? <span className="font-semibold text-sky-700"> · 📱 {item.garcom}</span> : ''}
                     </div>
                     {pago > 0.0005 && (
                       <div className="text-xs font-semibold text-emerald-700">
@@ -616,7 +627,7 @@ export function DetalheComanda({
         />
       )}
       {cobrando && (
-        <ModalPagamento subtotal={valorCobranca} viagem={false} aoFechar={() => setCobrando(null)} aoConfirmar={cobrar} />
+        <ModalPagamento subtotal={valorCobranca} viagem={false} servicoPct={servicoDaComanda(c, config)} aoFechar={() => setCobrando(null)} aoConfirmar={cobrar} />
       )}
 
       {juntando && (

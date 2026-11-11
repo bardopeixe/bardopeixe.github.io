@@ -23,8 +23,6 @@ export default function Painel({ dados, irPara }: { dados: Dados; irPara: (aba: 
   const doCaixa = pedidos.filter((p) => p.caixaId === caixaAberto.id).slice().reverse()
   const naFila = doCaixa.filter((p) => !p.entregue && !p.cancelado)
   const lista = verTodos ? doCaixa : doCaixa.slice(0, 15)
-  const espetosProntos = produtos.filter((p) => p.categoria === 'espeto' && p.estoque !== undefined)
-  const totalProntos = espetosProntos.reduce((s, p) => s + Math.max(0, p.estoque ?? 0), 0)
   const linhas = r.porProduto.filter((l) => l.vendidos > 0 || l.final !== undefined)
   // acompanhamentos preparados em kg (baião…) que limitam produtos sem estoque de prontos
   const preparados = insumos
@@ -51,12 +49,12 @@ export default function Painel({ dados, irPara }: { dados: Dados; irPara: (aba: 
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Cartao titulo="Faturamento" valor={brl(r.faturamento)} detalhe={`${r.qtdPedidos} pedidos · ticket ${brl(r.ticketMedio)}`} cor="azul" />
-        <Cartao titulo="Espetos vendidos" valor={r.espetosVendidos} detalhe="avulsos + dentro de combos/jantinhas" cor="laranja" />
+        <Cartao titulo="Itens vendidos" valor={r.itensVendidos} detalhe={`${r.qtdViagem} para viagem / delivery`} cor="laranja" />
         <Cartao
-          titulo="Espetos prontos restantes"
-          valor={espetosProntos.length ? totalProntos : '—'}
-          detalhe={espetosProntos.length ? 'montados e ainda não vendidos' : 'sem controle de estoque'}
-          cor={espetosProntos.length && totalProntos <= config.alertaEstoque ? 'vermelho' : 'stone'}
+          titulo="Taxa de serviço"
+          valor={brl(r.servico)}
+          detalhe="dos garçons — não entra no lucro"
+          cor="stone"
         />
         <Cartao
           titulo="Lucro até agora"
@@ -160,7 +158,7 @@ export default function Painel({ dados, irPara }: { dados: Dados; irPara: (aba: 
       <section className="rounded-2xl border-2 border-stone-200 bg-white p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-extrabold">
-            Pedidos {naFila.length > 0 && <span className="ml-2 rounded-full bg-orange-600 px-2.5 py-0.5 text-sm text-white">{naFila.length} na brasa</span>}
+            Pedidos {naFila.length > 0 && <span className="ml-2 rounded-full bg-orange-600 px-2.5 py-0.5 text-sm text-white">{naFila.length} na cozinha</span>}
           </h2>
         </div>
         {doCaixa.length === 0 && <p className="text-stone-500">Nenhum pedido ainda.</p>}
