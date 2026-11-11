@@ -28,12 +28,22 @@ export default {
         sans: ['"Archivo Narrow"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         marca: ['"Bebas Neue"', '"Archivo Narrow"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
-      // cantos quase retos, como placa e etiqueta (nada de bolha arredondada)
-      borderRadius: {
-        lg: '3px',
-        xl: '4px',
-        '2xl': '4px',
-        '3xl': '6px',
+      keyframes: {
+        subir: { from: { opacity: '0', transform: 'translateY(14px)' }, to: { opacity: '1', transform: 'none' } },
+        folha: { from: { transform: 'translateY(100%)' }, to: { transform: 'none' } },
+        aparecer: { from: { opacity: '0' }, to: { opacity: '1' } },
+        pulo: { '0%': { transform: 'scale(1)' }, '40%': { transform: 'scale(1.25)' }, '100%': { transform: 'scale(1)' } },
+        faixas: { from: { backgroundPosition: '0 0' }, to: { backgroundPosition: '88px 0' } },
+      },
+      animation: {
+        subir: 'subir .45s cubic-bezier(.2,.8,.2,1) both',
+        folha: 'folha .32s cubic-bezier(.2,.8,.2,1) both',
+        aparecer: 'aparecer .25s ease-out both',
+        pulo: 'pulo .35s ease-out',
+      },
+      boxShadow: {
+        cartao: '0 1px 2px rgb(0 0 0 / .06), 0 8px 24px -8px rgb(0 0 0 / .18)',
+        flutuante: '0 18px 40px -12px rgb(215 20 26 / .45)',
       },
     },
   },

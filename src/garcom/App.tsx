@@ -252,20 +252,20 @@ function Garcom({ uid, nome, email }: { uid: string; nome: string; email: string
         <header className="sticky top-0 z-20 overflow-hidden bg-orange-600 px-4 pb-3 pt-[max(.75rem,env(safe-area-inset-top))] text-white shadow">
           <div className="faixas pointer-events-none absolute inset-y-0 -right-10 w-40" />
           <div className="relative flex items-center gap-3">
-            <img src="/logo.png" alt="" className="h-10 w-10 shrink-0 rounded-full bg-white" />
+            <img src="/logo.png" alt="" className="h-11 w-11 shrink-0 rounded-full border-2 border-black bg-white shadow-lg" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs font-semibold">Garçom · {nome}</div>
               <button className="font-marca text-3xl leading-none" onClick={() => setEscolhendoMesa(true)}>
                 {mesa ? `Mesa ${mesa}` : 'Escolher mesa'} <span className="font-sans text-sm font-bold">trocar ▾</span>
               </button>
             </div>
-            <button className="relative bg-black px-3 py-1.5 text-sm font-bold uppercase" onClick={() => setVendoPedidos(true)}>
+            <button className="relative rounded-full bg-black/70 px-3.5 py-1.5 text-sm font-bold uppercase backdrop-blur hover:bg-black" onClick={() => setVendoPedidos(true)}>
               Enviados
               {aguardando > 0 && <span className="absolute -right-1 -top-1 rounded-full bg-amber-400 px-1.5 text-xs font-black text-stone-900">{aguardando}</span>}
             </button>
           </div>
           <input
-            className="relative mt-3 w-full border-2 border-black bg-white px-4 py-2.5 text-stone-900 outline-none"
+            className="relative mt-3 w-full rounded-2xl bg-white px-4 py-2.5 text-stone-900 shadow-cartao outline-none"
             placeholder="Buscar prato ou bebida…"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
@@ -275,7 +275,7 @@ function Garcom({ uid, nome, email }: { uid: string; nome: string; email: string
               {['', ...secoes].map((s) => (
                 <button
                   key={s || 'todos'}
-                  className={`shrink-0 px-4 py-1.5 font-marca text-xl leading-none ${secao === s ? 'bg-black text-white' : 'bg-white text-black'}`}
+                  className={`shrink-0 rounded-full px-4 py-1.5 font-marca text-xl leading-none ${secao === s ? 'bg-black text-white shadow-md' : 'bg-white/90 text-black hover:bg-white'}`}
                   onClick={() => setSecao(s)}
                 >
                   {s || 'Tudo'}
@@ -285,7 +285,7 @@ function Garcom({ uid, nome, email }: { uid: string; nome: string; email: string
           )}
         </header>
 
-        <ul className="divide-y divide-stone-100 px-4">
+        <ul className="entrar divide-y divide-stone-100 px-4">
           {visiveis.length === 0 && <li className="py-10 text-center text-stone-500">Nada encontrado.</li>}
           {visiveis.map((p) => (
             <CartaoProduto key={p.id} p={p} qtd={noCarrinho(p.id)} aoAbrir={() => setAberto(p)} aoMais={() => mais(p)} />
@@ -296,11 +296,11 @@ function Garcom({ uid, nome, email }: { uid: string; nome: string; email: string
       {qtd > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-30 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))]">
           <button
-            className="mx-auto flex w-full max-w-2xl items-center gap-3 bg-black px-5 py-3.5 font-marca text-2xl leading-none text-white shadow-2xl active:scale-[.99]"
+            className="mx-auto flex w-full max-w-2xl animate-subir items-center gap-3 rounded-2xl bg-black/90 px-5 py-3.5 font-marca text-2xl leading-none text-white shadow-2xl ring-1 ring-white/10 backdrop-blur-md"
             onClick={() => (mesa ? setRevisando(true) : setEscolhendoMesa(true))}
           >
             <span className="flex-1 text-left">{mesa ? `Revisar · Mesa ${mesa} · ${qtd}` : 'Escolher a mesa'}</span>
-            <span className="bg-orange-600 px-3 py-1.5">{brl(total)}</span>
+            <span key={qtd} className="animate-pulo rounded-xl bg-orange-600 px-3 py-1.5 shadow-flutuante">{brl(total)}</span>
           </button>
         </div>
       )}

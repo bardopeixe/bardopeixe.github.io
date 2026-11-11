@@ -269,11 +269,11 @@ export default function App() {
       {tela.tipo === 'menu' && sacola.qtd > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-30 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))]">
           <button
-            className="mx-auto flex w-full max-w-2xl items-center gap-3 bg-black px-5 py-3.5 font-marca text-2xl leading-none text-white shadow-2xl active:scale-[.99]"
+            className="mx-auto flex w-full max-w-2xl animate-subir items-center gap-3 rounded-2xl bg-black/90 px-5 py-3.5 font-marca text-2xl leading-none text-white shadow-2xl ring-1 ring-white/10 backdrop-blur-md"
             onClick={() => setSacolaAberta(true)}
           >
             <span className="flex-1 text-left">Seu pedido · {sacola.qtd} {sacola.qtd === 1 ? 'item' : 'itens'}</span>
-            <span className="bg-orange-600 px-3 py-1.5">{brl(sacola.subtotal)}</span>
+            <span key={sacola.qtd} className="animate-pulo rounded-xl bg-orange-600 px-3 py-1.5 shadow-flutuante">{brl(sacola.subtotal)}</span>
           </button>
         </div>
       )}
@@ -386,26 +386,26 @@ function Menu({
         <div className="faixas pointer-events-none absolute inset-y-0 -right-10 w-56" />
         <div className="relative flex items-center justify-end gap-2">
           {usuario && (
-            <button className="bg-black px-3 py-1.5 text-sm font-bold uppercase tracking-wide" onClick={aoPedidos}>
+            <button className="rounded-full bg-black/70 px-3.5 py-1.5 text-sm font-bold uppercase tracking-wide backdrop-blur hover:bg-black" onClick={aoPedidos}>
               Meus pedidos
             </button>
           )}
-          <button className="bg-black px-3 py-1.5 text-sm font-bold uppercase tracking-wide" onClick={aoConta}>
+          <button className="rounded-full bg-black/70 px-3.5 py-1.5 text-sm font-bold uppercase tracking-wide backdrop-blur hover:bg-black" onClick={aoConta}>
             {usuario ? usuario.nome.split(' ')[0] : 'Entrar'}
           </button>
         </div>
         <div className="relative mt-2 flex items-center gap-4">
-          <img src="/logo.png" alt="Logo do Bar do Peixe" className="h-20 w-20 shrink-0 rounded-full border-[3px] border-black bg-white" />
+          <img src="/logo.png" alt="Logo do Bar do Peixe" className="h-20 w-20 shrink-0 animate-subir rounded-full border-[3px] border-black bg-white shadow-2xl" />
           <div className="min-w-0">
             <h1 className="text-[44px] leading-[.9]">{loja.nome}</h1>
             {loja.endereco && <p className="mt-1 text-sm">{loja.endereco}</p>}
           </div>
         </div>
         <div className="relative mt-4 flex flex-wrap gap-2 font-marca text-lg leading-none">
-          <span className={`px-2.5 py-1.5 ${loja.aberto ? 'bg-black' : 'bg-white text-black'}`}>{loja.aberto ? '● Aberto agora' : '● Fechado'}</span>
-          {loja.entrega && <span className="bg-black px-2.5 py-1.5">Entrega {loja.tempoEntrega} · {menorTaxa ? `a partir de ${brl(menorTaxa)}` : 'grátis'}</span>}
-          {loja.retirada && <span className="bg-black px-2.5 py-1.5">Retirada {loja.tempoRetirada}</span>}
-          {loja.pedidoMinimo > 0 && <span className="bg-black px-2.5 py-1.5">Mínimo {brl(loja.pedidoMinimo)}</span>}
+          <span className={`rounded-full px-3 py-1.5 ${loja.aberto ? 'bg-black/80 backdrop-blur' : 'bg-white text-black'}`}>{loja.aberto ? '● Aberto agora' : '● Fechado'}</span>
+          {loja.entrega && <span className="rounded-full bg-black/80 px-3 py-1.5 backdrop-blur">Entrega {loja.tempoEntrega} · {menorTaxa ? `a partir de ${brl(menorTaxa)}` : 'grátis'}</span>}
+          {loja.retirada && <span className="rounded-full bg-black/80 px-3 py-1.5 backdrop-blur">Retirada {loja.tempoRetirada}</span>}
+          {loja.pedidoMinimo > 0 && <span className="rounded-full bg-black/80 px-3 py-1.5 backdrop-blur">Mínimo {brl(loja.pedidoMinimo)}</span>}
         </div>
       </header>
 
@@ -424,11 +424,11 @@ function Menu({
       )}
       {loja.aviso && <div className="bg-amber-300 px-5 py-2.5 text-sm font-bold text-amber-950">📣 {loja.aviso}</div>}
 
-      <div className="sticky top-0 z-20 border-b-[3px] border-black bg-white">
+      <div className="sticky top-0 z-20 border-b border-stone-200 bg-white/85 shadow-sm backdrop-blur-md">
         <div className="px-4 pt-3">
           <input
             type="search"
-            className="w-full border-2 border-black bg-white px-4 py-2.5 text-base outline-none focus:border-orange-600"
+            className="w-full rounded-2xl border-2 border-stone-200 bg-white px-4 py-2.5 text-base outline-none transition focus:border-orange-600 focus:shadow-[0_0_0_4px_rgb(215_20_26/.12)]"
             placeholder="Buscar no cardápio"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
@@ -440,7 +440,7 @@ function Menu({
               <button
                 key={s.nome}
                 data-chip={s.nome}
-                className={`shrink-0 px-4 py-1.5 font-marca text-xl leading-none transition ${secaoAtiva === s.nome ? 'bg-black text-white' : 'border-2 border-black text-black'}`}
+                className={`shrink-0 rounded-full px-4 py-1.5 font-marca text-xl leading-none transition ${secaoAtiva === s.nome ? 'bg-black text-white shadow-md' : 'border-2 border-stone-900 text-black hover:bg-stone-100'}`}
                 onClick={() => {
                   const el = document.querySelector(`[data-secao="${CSS.escape(s.nome)}"]`)
                   if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 130, behavior: 'smooth' })
@@ -459,7 +459,7 @@ function Menu({
         {secoes.map((s) => (
           <section key={s.nome} data-secao={s.nome} className="pt-6">
             <h2 className="mb-1 text-3xl">{s.nome}</h2>
-            <ul className="divide-y divide-stone-100">
+            <ul className="entrar divide-y divide-stone-100">
               {s.itens.map((p) => (
                 <CartaoProduto key={p.id} p={p} qtd={qtdNaSacola(p.id)} aoAbrir={() => !p.esgotado && setAberto(p)} aoMais={() => adicionarRapido(p)} />
               ))}

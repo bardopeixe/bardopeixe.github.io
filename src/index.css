@@ -25,7 +25,38 @@ h2,
   letter-spacing: 0.02em;
 }
 
-/* Listras pretas da placa da fachada */
+/* Listras pretas da placa da fachada (andam devagar) */
 .faixas {
   background-image: repeating-linear-gradient(115deg, #111 0 18px, transparent 18px 40px);
+  background-size: 88px 100%;
+  animation: faixas 6s linear infinite;
+}
+@keyframes faixas {
+  to { background-position: 88px 0; }
+}
+
+/* Toque com resposta: botões afundam de leve ao apertar */
+button {
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+}
+button:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+/* Itens das listas entram em sequência */
+.entrar > * {
+  animation: subir 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.entrar > *:nth-child(2) { animation-delay: 40ms; }
+.entrar > *:nth-child(3) { animation-delay: 80ms; }
+.entrar > *:nth-child(4) { animation-delay: 120ms; }
+.entrar > *:nth-child(5) { animation-delay: 160ms; }
+.entrar > *:nth-child(n + 6) { animation-delay: 200ms; }
+@keyframes subir {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
 }

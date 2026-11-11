@@ -26,12 +26,12 @@ export function CartaoProduto({ p, qtd, aoAbrir, aoMais }: { p: ProdutoOnline; q
         </div>
       </button>
       <div className="relative shrink-0">
-        <button onClick={aoAbrir} disabled={p.esgotado} className="block overflow-hidden">
-          <Foto p={p} className={`h-24 w-24 ${p.esgotado ? 'grayscale' : ''}`} />
+        <button onClick={aoAbrir} disabled={p.esgotado} className="group block overflow-hidden rounded-2xl shadow-cartao">
+          <Foto p={p} className={`h-24 w-24 transition duration-300 group-hover:scale-110 ${p.esgotado ? 'grayscale' : ''}`} />
         </button>
         {!p.esgotado && (
           <button
-            className={`absolute -bottom-2 -right-2 flex h-9 min-w-9 items-center justify-center px-2 font-marca text-2xl leading-none ${qtd ? 'bg-black text-white' : 'bg-orange-600 text-white'}`}
+            className={`absolute -bottom-2 -right-2 flex h-10 min-w-10 items-center justify-center rounded-full px-2 font-marca text-2xl leading-none text-white shadow-flutuante ring-4 ring-white hover:scale-110 ${qtd ? 'animate-pulo bg-black' : 'bg-orange-600'}`}
             onClick={aoMais}
             aria-label={`Adicionar ${p.nome}`}
           >
@@ -59,8 +59,8 @@ export function Folha({ titulo, aoFechar, children, rodape }: { titulo?: string;
     }
   }, [aoFechar])
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" onClick={aoFechar}>
-      <div role="dialog" aria-label={titulo} className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex animate-aparecer items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4" onClick={aoFechar}>
+      <div role="dialog" aria-label={titulo} className="flex max-h-[92vh] w-full max-w-lg animate-folha flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:animate-subir sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
         {titulo && (
           <div className="flex items-center justify-between border-b border-stone-100 px-5 py-4">
             <h2 className="text-lg font-black">{titulo}</h2>
@@ -143,7 +143,7 @@ export function ProdutoSheet({
       rodape={
         <div className="flex items-center gap-3">
           <Stepper valor={qtd} aoMudar={setQtd} min={1} />
-          <button className="flex flex-1 items-center justify-between bg-orange-600 px-5 py-3 font-marca text-2xl leading-none text-white disabled:bg-stone-300" disabled={!completo} onClick={adicionar}>
+          <button className="flex flex-1 items-center justify-between rounded-2xl bg-orange-600 px-5 py-3 font-marca text-2xl leading-none text-white shadow-flutuante hover:bg-orange-700 disabled:bg-stone-300 disabled:shadow-none" disabled={!completo} onClick={adicionar}>
             <span>{completo ? rotulo : 'Escolha os itens'}</span>
             <span>{brl(unit * qtd)}</span>
           </button>
