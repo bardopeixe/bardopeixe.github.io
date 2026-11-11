@@ -1,0 +1,32 @@
+{
+  "name": "Garçom — Bar do Peixe",
+  "short_name": "Garçom",
+  "description": "Lançar pedidos das mesas.",
+  "start_url": "/garcom/",
+  "scope": "/garcom/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f5f5f4",
+  "theme_color": "#720103",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/garcom/icone-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/garcom/icone-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/garcom/icone-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
