@@ -468,7 +468,7 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
             <button
               key={f}
               onClick={() => setFiltro(f)}
-              className={`shrink-0 rounded-full px-5 py-2 text-base font-bold ${filtro === f ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 ring-2 ring-stone-200'}`}
+              className={`shrink-0 rounded-full px-5 py-2 font-marca text-xl leading-none transition ${filtro === f ? 'bg-stone-900 text-white shadow-md' : 'bg-white text-stone-900 ring-2 ring-stone-900 hover:bg-stone-100'}`}
             >
               {f === 'todos' ? 'Todos' : NOMES_CATEGORIA[f]}
             </button>
@@ -484,27 +484,17 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
             const r = restanteBotao(p)
             const esgotado = r !== undefined && r <= 0
             const qtd = noCarrinhoDireto(p.id)
-            const cor =
-              p.categoria === 'prato'
-                ? 'border-orange-300'
-                : p.categoria === 'porcao'
-                ? 'border-amber-400'
-                : p.categoria === 'espeto'
-                ? 'border-orange-300'
-                : p.categoria === 'combo'
-                  ? 'border-rose-300'
-                  : p.categoria === 'drink'
-                    ? 'border-violet-300'
-                    : p.categoria === 'bebida'
-                    ? 'border-sky-300'
-                    : 'border-amber-300'
+            // categoria indicada por uma faixa colorida no topo do botão
+            const cor = 'border-transparent'
+            const faixa = p.categoria === 'bebida' || p.categoria === 'drink' ? 'bg-stone-900' : 'bg-orange-600'
             return (
               <button
                 key={p.id}
                 onClick={() => adicionar(p)}
                 disabled={esgotado}
-                className={`relative flex select-none flex-col items-center overflow-hidden rounded-2xl border-4 bg-white text-center shadow-sm transition active:scale-95 ${cor} ${esgotado ? 'opacity-40 grayscale' : 'hover:shadow-md'} ${qtd ? 'ring-4 ring-orange-500' : ''}`}
+                className={`relative flex select-none flex-col items-center overflow-hidden rounded-2xl border-2 bg-white text-center shadow-sm transition active:scale-95 ${cor} ${esgotado ? 'opacity-40 grayscale' : 'shadow-cartao hover:-translate-y-0.5 hover:shadow-xl'} ${qtd ? 'ring-4 ring-orange-500' : ''}`}
               >
+                <span className={`absolute inset-x-0 top-0 z-[1] h-1.5 ${faixa}`} />
                 <Imagem emoji={p.emoji} imagem={p.imagem} className="h-20 w-full text-5xl sm:h-24" />
                 <div className="w-full px-2 pb-2 pt-1">
                   <div className="line-clamp-2 text-base font-extrabold leading-tight text-stone-900">{p.nome}</div>

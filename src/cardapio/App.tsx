@@ -223,8 +223,8 @@ export default function App() {
     )
 
   return (
-    <div className="min-h-screen bg-orange-50/60 text-stone-900">
-      <div className="mx-auto max-w-2xl bg-white pb-28 shadow-xl shadow-orange-900/5 sm:min-h-screen">
+    <div className="min-h-screen bg-stone-200 text-stone-900">
+      <div className="mx-auto max-w-2xl bg-white pb-28 shadow-xl sm:min-h-screen">
         {tela.tipo === 'menu' && (
           <Menu
             loja={loja}
@@ -269,12 +269,11 @@ export default function App() {
       {tela.tipo === 'menu' && sacola.qtd > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-30 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))]">
           <button
-            className="mx-auto flex w-full max-w-2xl items-center gap-3 rounded-2xl bg-orange-600 px-5 py-4 text-white shadow-2xl shadow-orange-900/30 active:scale-[.99]"
+            className="mx-auto flex w-full max-w-2xl animate-subir items-center gap-3 rounded-2xl bg-black/90 px-5 py-3.5 font-marca text-2xl leading-none text-white shadow-2xl ring-1 ring-white/10 backdrop-blur-md"
             onClick={() => setSacolaAberta(true)}
           >
-            <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-white/20 px-2 font-black">{sacola.qtd}</span>
-            <span className="flex-1 text-left text-lg font-extrabold">Ver sacola</span>
-            <span className="text-lg font-black">{brl(sacola.subtotal)}</span>
+            <span className="flex-1 text-left">Seu pedido · {sacola.qtd} {sacola.qtd === 1 ? 'item' : 'itens'}</span>
+            <span key={sacola.qtd} className="animate-pulo rounded-xl bg-orange-600 px-3 py-1.5 shadow-flutuante">{brl(sacola.subtotal)}</span>
           </button>
         </div>
       )}
@@ -383,32 +382,30 @@ function Menu({
 
   return (
     <>
-      <header className="relative overflow-hidden bg-gradient-to-br from-orange-700 via-orange-800 to-stone-950 px-5 pb-6 pt-5 text-white">
-        <img src="/logo.png" alt="" className="pointer-events-none absolute -right-12 -top-6 h-52 w-52 opacity-15" />
-        <div className="relative flex items-center justify-between gap-2">
-          <span className={`rounded-full px-3 py-1 text-xs font-black ${loja.aberto ? 'bg-emerald-400 text-emerald-950' : 'bg-stone-900/60 text-white'}`}>
-            {loja.aberto ? '● ABERTO AGORA' : '● FECHADO'}
-          </span>
-          <div className="flex gap-2">
-            {usuario && (
-              <button className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-bold backdrop-blur" onClick={aoPedidos}>
-                🧾 Pedidos
-              </button>
-            )}
-            <button className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-bold backdrop-blur" onClick={aoConta}>
-              {usuario ? `👤 ${usuario.nome.split(' ')[0]}` : '👤 Entrar'}
+      <header className="relative overflow-hidden bg-orange-600 px-5 pb-5 pt-4 text-white">
+        <div className="faixas pointer-events-none absolute inset-y-0 -right-10 w-56" />
+        <div className="relative flex items-center justify-end gap-2">
+          {usuario && (
+            <button className="rounded-full bg-black/70 px-3.5 py-1.5 text-sm font-bold uppercase tracking-wide backdrop-blur hover:bg-black" onClick={aoPedidos}>
+              Meus pedidos
             </button>
+          )}
+          <button className="rounded-full bg-black/70 px-3.5 py-1.5 text-sm font-bold uppercase tracking-wide backdrop-blur hover:bg-black" onClick={aoConta}>
+            {usuario ? usuario.nome.split(' ')[0] : 'Entrar'}
+          </button>
+        </div>
+        <div className="relative mt-2 flex items-center gap-4">
+          <img src="/logo.png" alt="Logo do Bar do Peixe" className="h-20 w-20 shrink-0 animate-subir rounded-full border-[3px] border-black bg-white shadow-2xl" />
+          <div className="min-w-0">
+            <h1 className="text-[44px] leading-[.9]">{loja.nome}</h1>
+            {loja.endereco && <p className="mt-1 text-sm">{loja.endereco}</p>}
           </div>
         </div>
-        <div className="relative mt-4 flex items-center gap-3">
-          <img src="/logo.png" alt="Logo do Bar do Peixe" className="h-16 w-16 shrink-0 rounded-full bg-white shadow-lg" />
-          <h1 className="font-marca text-3xl leading-tight tracking-tight">{loja.nome}</h1>
-        </div>
-        {loja.endereco && <p className="relative mt-1 text-sm text-orange-100">📍 {loja.endereco}</p>}
-        <div className="relative mt-4 flex flex-wrap gap-2 text-xs font-bold">
-          {loja.entrega && <span className="rounded-full bg-black/20 px-3 py-1.5">🛵 {loja.tempoEntrega} · entrega a partir de {menorTaxa ? brl(menorTaxa) : 'grátis'}</span>}
-          {loja.retirada && <span className="rounded-full bg-black/20 px-3 py-1.5">🛍️ Retirada {loja.tempoRetirada}</span>}
-          {loja.pedidoMinimo > 0 && <span className="rounded-full bg-black/20 px-3 py-1.5">Pedido mínimo {brl(loja.pedidoMinimo)}</span>}
+        <div className="relative mt-4 flex flex-wrap gap-2 font-marca text-lg leading-none">
+          <span className={`rounded-full px-3 py-1.5 ${loja.aberto ? 'bg-black/80 backdrop-blur' : 'bg-white text-black'}`}>{loja.aberto ? '● Aberto agora' : '● Fechado'}</span>
+          {loja.entrega && <span className="rounded-full bg-black/80 px-3 py-1.5 backdrop-blur">Entrega {loja.tempoEntrega} · {menorTaxa ? `a partir de ${brl(menorTaxa)}` : 'grátis'}</span>}
+          {loja.retirada && <span className="rounded-full bg-black/80 px-3 py-1.5 backdrop-blur">Retirada {loja.tempoRetirada}</span>}
+          {loja.pedidoMinimo > 0 && <span className="rounded-full bg-black/80 px-3 py-1.5 backdrop-blur">Mínimo {brl(loja.pedidoMinimo)}</span>}
         </div>
       </header>
 
@@ -423,16 +420,16 @@ function Menu({
         </button>
       )}
       {!loja.aberto && (
-        <div className="bg-stone-800 px-5 py-3 text-sm font-semibold text-white">😴 Estamos fechados agora. Dá para ver o cardápio, mas os pedidos abrem quando a loja abrir.</div>
+        <div className="bg-stone-900 px-5 py-3 text-sm font-semibold text-white">Estamos fechados agora. Dá para ver o cardápio, mas os pedidos abrem quando a loja abrir.</div>
       )}
       {loja.aviso && <div className="bg-amber-300 px-5 py-2.5 text-sm font-bold text-amber-950">📣 {loja.aviso}</div>}
 
-      <div className="sticky top-0 z-20 border-b border-stone-100 bg-white/95 backdrop-blur">
+      <div className="sticky top-0 z-20 border-b border-stone-200 bg-white/85 shadow-sm backdrop-blur-md">
         <div className="px-4 pt-3">
           <input
             type="search"
-            className="w-full rounded-2xl bg-stone-100 px-4 py-3 text-base outline-none ring-orange-400 focus:ring-2"
-            placeholder="🔎 Buscar no cardápio"
+            className="w-full rounded-2xl border-2 border-stone-200 bg-white px-4 py-2.5 text-base outline-none transition focus:border-orange-600 focus:shadow-[0_0_0_4px_rgb(215_20_26/.12)]"
+            placeholder="Buscar no cardápio"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
           />
@@ -443,7 +440,7 @@ function Menu({
               <button
                 key={s.nome}
                 data-chip={s.nome}
-                className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition ${secaoAtiva === s.nome ? 'bg-orange-600 text-white' : 'bg-stone-100 text-stone-700'}`}
+                className={`shrink-0 rounded-full px-4 py-1.5 font-marca text-xl leading-none transition ${secaoAtiva === s.nome ? 'bg-black text-white shadow-md' : 'border-2 border-stone-900 text-black hover:bg-stone-100'}`}
                 onClick={() => {
                   const el = document.querySelector(`[data-secao="${CSS.escape(s.nome)}"]`)
                   if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 130, behavior: 'smooth' })
@@ -461,8 +458,8 @@ function Menu({
         {secoes.length === 0 && <p className="py-16 text-center text-stone-500">{termo ? `Nada encontrado para “${busca}”.` : 'Cardápio vazio.'}</p>}
         {secoes.map((s) => (
           <section key={s.nome} data-secao={s.nome} className="pt-6">
-            <h2 className="mb-1 text-xl font-black">{s.nome}</h2>
-            <ul className="divide-y divide-stone-100">
+            <h2 className="mb-1 text-3xl">{s.nome}</h2>
+            <ul className="entrar divide-y divide-stone-100">
               {s.itens.map((p) => (
                 <CartaoProduto key={p.id} p={p} qtd={qtdNaSacola(p.id)} aoAbrir={() => !p.esgotado && setAberto(p)} aoMais={() => adicionarRapido(p)} />
               ))}
