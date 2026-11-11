@@ -1,5 +1,6 @@
 import { conexaoFirebase } from '../nuvem/conta'
 import { secaoDe, SECOES, esgotado } from './catalogo'
+import { SITE } from '../nuvem/site'
 import type { Adicional, ConfigOnline, Produto, TipoChavePix } from './tipos'
 
 /**
@@ -11,8 +12,8 @@ import type { Adicional, ConfigOnline, Produto, TipoChavePix } from './tipos'
  * - a lista de garçons autorizados fica em equipe/garcons (só o dono muda).
  */
 
-export const URL_CARDAPIO = 'https://bardopeixe.github.io/'
-export const URL_GARCOM = 'https://bardopeixe.github.io/garcom/'
+export const URL_CARDAPIO = `${SITE}/`
+export const URL_GARCOM = `${SITE}/garcom/`
 
 const COL_LOJA = 'restaurante'
 const COL_PEDIDOS = 'pedidos'

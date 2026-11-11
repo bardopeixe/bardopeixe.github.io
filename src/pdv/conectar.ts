@@ -1,10 +1,12 @@
+import { SITE_PUBLICO } from '../nuvem/site'
+
 /**
  * Conectar outro aparelho (celular) à mesma planilha com um QR code/link:
  * o link leva o endereço do Apps Script e a chave; ao abrir, o PDV pergunta e configura sozinho.
  */
 
 /** Endereço público do PDV (usado quando o sistema está aberto como arquivo no computador). */
-export const SITE_PDV = 'https://plisselab.github.io/pdv/'
+export const SITE_PDV = `${SITE_PUBLICO}/pdv/`
 
 export function linkConectar(url: string, chave: string) {
   const base = location.protocol.startsWith('http') ? `${location.origin}${location.pathname}` : SITE_PDV

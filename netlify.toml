@@ -1,0 +1,8 @@
+# Publicação no Netlify (alternativa ao GitHub Pages).
+# Gera o cardápio (/), o app do garçom (/garcom/) e o PDV (/pdv/) na pasta dist.
+[build]
+  command = "npm run build && npm run build:pdv && mkdir -p dist/pdv && cp dist-pdv/pdv.html dist/pdv/index.html"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
