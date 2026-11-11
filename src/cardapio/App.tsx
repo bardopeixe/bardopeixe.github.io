@@ -13,6 +13,8 @@ import {
   lerPerfil,
   ouvirLoja,
   ouvirMeusPedidos,
+  buscarCep,
+  mesmoBairro,
   salvarPerfil,
   statusAberto,
   tocarCampainha,
@@ -695,7 +697,32 @@ function Checkout({
   const [tipo, setTipo] = useState<'entrega' | 'retirada'>(loja.entrega ? 'entrega' : 'retirada')
   const [nome, setNome] = useState(usuario.nome === usuario.email ? '' : usuario.nome)
   const [telefone, setTelefone] = useState('')
-  const [end, setEnd] = useState({ bairro: '', rua: '', numero: '', complemento: '', referencia: '' })
+  const [end, setEnd] = useState({ cep: '', bairro: '', rua: '', numero: '', complemento: '', referencia: '' })
+  const [cepInfo, setCepInfo] = useState<{ tipo: 'buscando' | 'ok' | 'erro' | 'fora'; texto?: string } | null>(null)
+  const numeroRef = useRef<HTMLInputElement>(null)
+
+  /** CEP digitado: busca rua e bairro e já escolhe o bairro da lista de entrega (se for atendido). */
+  async function preencherCep(valor: string) {
+    const d = valor.replace(/\D/g, '').slice(0, 8)
+    const cep = d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d
+    setEnd((e) => ({ ...e, cep }))
+    if (d.length !== 8) {
+      setCepInfo(null)
+      return
+    }
+    setCepInfo({ tipo: 'buscando' })
+    try {
+      const r = await buscarCep(d)
+      if (!r) return setCepInfo({ tipo: 'erro', texto: 'CEP não encontrado. Confira os números ou preencha o endereço abaixo.' })
+      const atendido = loja.bairros.find((b) => mesmoBairro(b.nome, r.bairro))
+      setEnd((e) => ({ ...e, cep, rua: r.rua || e.rua, bairro: atendido ? atendido.nome : e.bairro }))
+      if (atendido || !r.bairro) setCepInfo({ tipo: 'ok', texto: [r.bairro, `${r.cidade}/${r.uf}`].filter(Boolean).join(' · ') })
+      else setCepInfo({ tipo: 'fora', texto: `O bairro ${r.bairro} (${r.cidade}/${r.uf}) não está na nossa lista de entrega. Escolha o bairro mais próximo abaixo ou retire no local.` })
+      setTimeout(() => numeroRef.current?.focus(), 50)
+    } catch {
+      setCepInfo({ tipo: 'erro', texto: 'Não deu para buscar o CEP agora. Preencha o endereço abaixo.' })
+    }
+  }
   const [forma, setForma] = useState<FormaOnline | ''>('')
   const [troco, setTroco] = useState('')
   const [obs, setObs] = useState('')
@@ -709,7 +736,8 @@ function Checkout({
         if (!p) return
         if (p.nome) setNome((n) => n || p.nome)
         if (p.telefone) setTelefone((t) => t || mascaraTel(p.telefone))
-        if (p.endereco) setEnd((e) => (e.rua ? e : { ...e, ...p.endereco!, bairro: loja.bairros.some((b) => b.nome === p.endereco!.bairro) ? p.endereco!.bairro : '' }))
+        if (p.endereco)
+          setEnd((e) => (e.rua ? e : { ...e, ...p.endereco!, cep: p.endereco!.cep ?? '', bairro: loja.bairros.some((b) => b.nome === p.endereco!.bairro) ? p.endereco!.bairro : '' }))
       })
       .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -746,7 +774,10 @@ function Checkout({
     setEnviando(true)
     setErro('')
     try {
-      const endereco = tipo === 'entrega' ? { ...end, rua: end.rua.trim(), numero: end.numero.trim(), complemento: end.complemento.trim(), referencia: end.referencia.trim() } : undefined
+      const endereco =
+        tipo === 'entrega'
+          ? { ...end, cep: end.cep.replace(/\D/g, '').length === 8 ? end.cep : '', rua: end.rua.trim(), numero: end.numero.trim(), complemento: end.complemento.trim(), referencia: end.referencia.trim() }
+          : undefined
       void salvarPerfil(usuario.uid, { nome: nome.trim(), telefone: soDigitos(telefone), ...(endereco ? { endereco } : {}) }).catch(() => {})
       const id = await enviarPedido({
         uid: usuario.uid,
@@ -797,6 +828,30 @@ function Checkout({
         </div>
         {tipo === 'entrega' ? (
           <div className="mt-4 space-y-3">
+            <div>
+              <div className="relative">
+                <input
+                  className={campo}
+                  placeholder="CEP (preenche o endereço)"
+                  inputMode="numeric"
+                  autoComplete="postal-code"
+                  value={end.cep}
+                  onChange={(e) => void preencherCep(e.target.value)}
+                />
+                {cepInfo?.tipo === 'buscando' && (
+                  <span className="absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 animate-spin rounded-full border-2 border-orange-200 border-t-orange-600" />
+                )}
+              </div>
+              {cepInfo && cepInfo.tipo !== 'buscando' && (
+                <p className={`mt-1 text-sm ${cepInfo.tipo === 'ok' ? 'text-emerald-700' : cepInfo.tipo === 'fora' ? 'font-semibold text-amber-700' : 'text-red-600'}`}>
+                  {cepInfo.tipo === 'ok' ? '✓ ' : ''}
+                  {cepInfo.texto}
+                </p>
+              )}
+              <a className="mt-1 inline-block text-xs text-stone-500 underline" href="https://buscacepinter.correios.com.br/" target="_blank" rel="noreferrer">
+                Não sei meu CEP
+              </a>
+            </div>
             <select className={`${campo} bg-white`} value={end.bairro} onChange={(e) => setEnd({ ...end, bairro: e.target.value })}>
               <option value="">Escolha o bairro…</option>
               {loja.bairros.map((b) => (
@@ -807,7 +862,7 @@ function Checkout({
             </select>
             <div className="grid grid-cols-[1fr_6.5rem] gap-3">
               <input className={campo} placeholder="Rua / avenida" autoComplete="address-line1" value={end.rua} onChange={(e) => setEnd({ ...end, rua: e.target.value })} />
-              <input className={campo} placeholder="Nº" inputMode="numeric" value={end.numero} onChange={(e) => setEnd({ ...end, numero: e.target.value })} />
+              <input ref={numeroRef} className={campo} placeholder="Nº" inputMode="numeric" value={end.numero} onChange={(e) => setEnd({ ...end, numero: e.target.value })} />
             </div>
             <input className={campo} placeholder="Complemento (apto, bloco, casa 2…)" value={end.complemento} onChange={(e) => setEnd({ ...end, complemento: e.target.value })} />
             <input className={campo} placeholder="Ponto de referência" value={end.referencia} onChange={(e) => setEnd({ ...end, referencia: e.target.value })} />
