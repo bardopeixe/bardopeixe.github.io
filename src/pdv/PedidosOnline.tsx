@@ -22,7 +22,7 @@ import {
   taxaDaForma,
   type Dados,
 } from './dados'
-import { imprimirPedido } from './impressao'
+import { imprimirMotoboy, imprimirPedido } from './impressao'
 import {
   CONFIG_ONLINE_INICIAL,
   NOMES_FORMA_ONLINE,
@@ -323,6 +323,8 @@ function lancarNoPdv(po: PedidoOnline, dados: Dados): Pedido | null {
       ...(po.endereco ? { endereco: enderecoTexto(po), bairro: po.endereco.bairro, referencia: po.endereco.referencia } : {}),
       pagamento: NOMES_FORMA_ONLINE[po.pagamento.forma] + (po.pagamento.trocoPara ? ` (troco p/ ${brl(po.pagamento.trocoPara)})` : ''),
       ...(po.obs ? { obs: po.obs } : {}),
+      ...(po.pagamento.forma === 'pix' ? { pagoAntecipado: true } : {}),
+      ...(po.pagamento.trocoPara ? { trocoPara: po.pagamento.trocoPara } : {}),
     },
     custoTotal: arred(itens.reduce((s, i) => s + i.custo * i.qtd, 0) + embalagens.reduce((s, e) => s + e.qtd * e.custo, 0)),
     ...(embalagens.length ? { embalagens } : {}),
@@ -462,6 +464,10 @@ export default function PedidosOnline({ dados, online, irPara }: { dados: Dados;
                       const ped = lancado(po)
                       if (ped) imprimirPedido(ped, dados.config)
                     }}
+                    aoMotoboy={() => {
+                      const ped = lancado(po)
+                      if (ped) imprimirMotoboy(ped, dados.config)
+                    }}
                   />
                 ))}
               </div>
@@ -589,6 +595,7 @@ function CartaoPedido({
   aoRecusar,
   aoStatus,
   aoImprimir,
+  aoMotoboy,
 }: {
   po: PedidoOnline
   dados: Dados
@@ -597,6 +604,7 @@ function CartaoPedido({
   aoRecusar: () => void
   aoStatus: (s: StatusOnline) => void
   aoImprimir: () => void
+  aoMotoboy: () => void
 }) {
   const [, tique] = useState(0)
   useEffect(() => {
@@ -680,6 +688,11 @@ function CartaoPedido({
             <button className={btn.secundario} onClick={aoImprimir} title="Imprimir de novo">
               🖨️
             </button>
+            {po.tipo === 'entrega' && (
+              <button className={btn.secundario} onClick={aoMotoboy} title="Imprimir a via do motoboy">
+                🛵🖨️
+              </button>
+            )}
             <button className="px-2 text-sm text-red-600 underline" disabled={ocupado} onClick={aoRecusar}>
               cancelar
             </button>
@@ -693,6 +706,11 @@ function CartaoPedido({
             <button className={btn.secundario} onClick={aoImprimir} title="Imprimir de novo">
               🖨️
             </button>
+            {po.tipo === 'entrega' && (
+              <button className={btn.secundario} onClick={aoMotoboy} title="Imprimir a via do motoboy">
+                🛵🖨️
+              </button>
+            )}
           </>
         )}
       </div>

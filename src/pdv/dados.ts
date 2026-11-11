@@ -299,6 +299,7 @@ export const CONFIG_INICIAL: Config = {
   imprimirAoFinalizar: true,
   viaChurrasqueira: true,
   viaCliente: true,
+  viaMotoboy: true,
   taxaDebito: 1.99,
   taxaCredito: 4.98,
   taxaPix: 0,

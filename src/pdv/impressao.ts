@@ -218,7 +218,50 @@ function imprimirHTML(corpo: string, config: Config) {
   ;(doc.fonts?.ready ?? Promise.resolve()).then(() => setTimeout(imprimir, 50))
 }
 
-export function imprimirPedido(p: Pedido, config: Config, vias?: { churrasqueira: boolean; cliente: boolean }) {
+/** Via do motoboy: endereço grande, telefone, o que levar e quanto cobrar na entrega. */
+function viaMotoboy(p: Pedido, config: Config) {
+  const o = p.online!
+  const pago = o.pagoAntecipado
+  const troco = !pago && o.trocoPara && o.trocoPara > p.total ? o.trocoPara - p.total : 0
+  return `<div class="via">
+    <div class="tag">VIA DO MOTOBOY — ENTREGA</div>
+    <div class="num"><small>PEDIDO</small>Nº ${numPedido(p.numero)}</div>
+    <div class="c">${hora(p.criadoEm)} · ${data(p.criadoEm)} · ${esc(config.nomeLoja)}</div>
+    <hr class="forte">
+    <div class="cliente">${esc(p.cliente)}</div>
+    <div class="c grande">TEL.: ${esc(o.telefone)}</div>
+    <hr>
+    <div class="sec">Endereço</div>
+    <div class="grande">${esc(o.endereco ?? '')}</div>
+    ${o.referencia ? `<div class="grande">REF.: ${esc(o.referencia)}</div>` : ''}
+    ${o.obs ? `<hr><div class="grande">OBS.: ${esc(o.obs)}</div>` : ''}
+    <hr>
+    <table>
+      ${p.itens.map((i) => `<tr class="linha"><td>${fmtQtd(i.qtd)}x ${esc(i.nome)}</td></tr>`).join('')}
+    </table>
+    <hr>
+    <table>
+      ${p.taxaEntrega ? `<tr class="linha"><td>Taxa de entrega</td><td class="r">${brl(p.taxaEntrega)}</td></tr>` : ''}
+      <tr class="linha"><td>Total do pedido</td><td class="r">${brl(p.total)}</td></tr>
+    </table>
+    ${
+      pago
+        ? `<div class="viagem">PAGO — NÃO COBRAR</div>`
+        : `<div class="viagem">COBRAR ${brl(p.total)}</div>
+      <div class="c grande">${esc(o.pagamento)}</div>
+      ${troco ? `<div class="local">LEVAR TROCO: ${brl(troco)}</div>` : ''}`
+    }
+    <hr>
+    <div class="peq">Recebido por: ______________________</div>
+  </div>`
+}
+
+/** Só a via do motoboy (reimprimir). */
+export function imprimirMotoboy(p: Pedido, config: Config) {
+  if (p.online?.tipo === 'entrega') imprimirHTML(viaMotoboy(p, config), config)
+}
+
+export function imprimirPedido(p: Pedido, config: Config, vias?: { churrasqueira: boolean; cliente: boolean; motoboy?: boolean }) {
   // via de preparo só quando tem algo para preparar (espeto, combo, dose/drink, acompanhamento);
   // venda só de bebida pronta (lata, garrafa, fardo) sai só com o cupom do cliente
   const temPreparo = itensCozinha(p.itens, config).some((i) => i.categoria !== 'bebida')
@@ -226,6 +269,9 @@ export function imprimirPedido(p: Pedido, config: Config, vias?: { churrasqueira
   const partes: string[] = []
   if (v.churrasqueira && itensCozinha(p.itens, config).length) partes.push(viaChurrasqueira({ ...p, itens: itensCozinha(p.itens, config) }))
   if (v.cliente) partes.push(viaCliente(p, config))
+  // entrega do cardápio digital: sai também a via do motoboy
+  const motoboy = vias?.motoboy ?? (config.viaMotoboy !== false && !vias)
+  if (motoboy && p.online?.tipo === 'entrega') partes.push(viaMotoboy(p, config))
   if (!partes.length) partes.push(viaCliente(p, config))
   imprimirHTML(partes.join(''), config)
 }

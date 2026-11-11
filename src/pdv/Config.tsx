@@ -117,6 +117,7 @@ export default function ConfigTela({
               ['imprimirAoFinalizar', 'Imprimir automaticamente ao finalizar o pedido'],
               ['viaChurrasqueira', 'Imprimir comanda da cozinha (letra grande, sem preços)'],
               ['viaCliente', 'Imprimir via do cliente (com preços e troco)'],
+              ['viaMotoboy', 'Entregas: imprimir via do motoboy (endereço, telefone, quanto cobrar e troco)'],
               ['cozinhaSemBebidas', 'Comanda da cozinha sem bebidas (só sai o que a cozinha prepara)'],
             ] as const
           ).map(([k, rotulo]) => (
