@@ -158,7 +158,7 @@ export default function Espetinho() {
     <div className="flex h-full flex-col">
       <div className={`flex items-center gap-2 px-3 py-4 ${curto ? 'justify-center' : ''}`}>
         <img src={ICONE_ESPETO} alt="" className="h-9 w-9 shrink-0 rounded-full bg-white" />
-        {!curto && <span className="min-w-0 flex-1 truncate font-extrabold leading-tight">{dados.config.nomeLoja}</span>}
+        {!curto && <span className="min-w-0 flex-1 truncate font-marca text-2xl leading-none">{dados.config.nomeLoja}</span>}
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-2">
         {ABAS.map((a) => (
