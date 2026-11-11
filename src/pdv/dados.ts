@@ -1,4 +1,5 @@
 import { useLocalStorage } from '../hooks/useLocalStorage'
+import { SITE } from '../nuvem/site'
 import type { Adicional, AdicionalItem, Caixa, Canal, Categoria, Comanda, Config, EmbalagemPedido, Escolha, FormaPagamento, Insumo, ItemFicha, ItemPedido, MovEstoque, Pedido, Produto, Unidade } from './tipos'
 
 export const novoId = () =>
@@ -218,7 +219,7 @@ const INSUMOS_INICIAIS: Insumo[] = [
   SAQUINHO_TERMICO,
 ]
 
-const FOTOS = 'https://bardopeixe.github.io/fotos/'
+const FOTOS = `${SITE}/fotos/`
 const ACOMPANHA = 'Acompanha arroz, feijão, macarrão, farofa e salada'
 
 const prato = (id: string, nome: string, preco: number, secao: string, emoji: string, extra: Partial<Produto> = {}): Produto => ({
