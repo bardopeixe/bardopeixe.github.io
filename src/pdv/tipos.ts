@@ -198,6 +198,10 @@ export interface Pedido {
     referencia?: string
     pagamento: string
     obs?: string
+    /** Pix pago pelo celular: o motoboy não cobra nada. */
+    pagoAntecipado?: boolean
+    /** Dinheiro: troco para quanto. */
+    trocoPara?: number
   }
   cancelado: boolean
   entregue: boolean
@@ -241,6 +245,8 @@ export interface Config {
   imprimirAoFinalizar: boolean
   viaChurrasqueira: boolean
   viaCliente: boolean
+  /** Entregas: imprimir a via do motoboy (endereço, telefone e quanto cobrar). */
+  viaMotoboy?: boolean
   /** % cobrada pela maquininha. */
   taxaDebito: number
   taxaCredito: number
