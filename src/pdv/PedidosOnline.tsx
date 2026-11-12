@@ -5,15 +5,10 @@ import { FIREBASE } from '../nuvem/firebaseConfig'
 import {
   arred,
   brl,
-  comEmbalagens,
-  consumoDosItens,
-  consumoInsumosDosItens,
   custoCompleto,
   embalagensSugeridas,
   hora,
   montarEmbalagens,
-  moverEstoqueInsumos,
-  moverEstoqueProdutos,
   novoId,
   precoComEscolhas,
   custoAdicionais,
@@ -21,6 +16,7 @@ import {
   somaAdicionais,
   taxaDaForma,
   type Dados,
+  moverEstoque,
 } from './dados'
 import { imprimirMotoboy, imprimirPedido } from './impressao'
 import {
@@ -245,14 +241,36 @@ const FORMA_PDV: Record<PedidoOnline['pagamento']['forma'], FormaPagamento> = {
 }
 
 /** Monta os itens com os preços e custos do PDV (o que vale é o cadastro, não o que veio do celular). */
+/** Número inteiro dentro de um limite (o que vem do celular não é confiável). */
+const inteiro = (n: unknown, min: number, max: number) => Math.min(max, Math.max(min, Math.round(Number(n) || 0)))
+
+/** Itens do pedido que não existem mais no cadastro do PDV (produto apagado ou pedido adulterado). */
+export const itensDesconhecidos = (po: Pick<PedidoOnline, 'itens'>, dados: Dados) => po.itens.filter((io) => !dados.produtos.some((p) => p.id === io.produtoId))
+
+/** Taxa de entrega pela lista de bairros do PDV (não a que veio do celular). */
+export function taxaDoPedido(po: Pick<PedidoOnline, 'tipo' | 'endereco' | 'taxaEntrega'>, dados: Dados) {
+  if (po.tipo !== 'entrega') return 0
+  const b = dados.config.online?.bairros.find((x) => x.nome === po.endereco?.bairro)
+  return b ? b.taxa : Math.max(0, Number(po.taxaEntrega) || 0)
+}
+
+/**
+ * Monta os itens com os preços e custos do PDV (o que vale é o cadastro, não o que veio do celular).
+ * Quantidades são limitadas, escolhas de combo só valem se forem opções do combo, e adicionais só os cadastrados.
+ */
 export function itensDoOnline(po: Pick<PedidoOnline, 'itens'>, dados: Dados): ItemPedido[] {
   const { produtos, insumos } = dados
-  return po.itens.map((io) => {
+  return po.itens.map((bruto) => {
+    const io = { ...bruto, qtd: inteiro(bruto.qtd, 1, 99), obs: String(bruto.obs ?? '').slice(0, 200) }
     const p = produtos.find((x) => x.id === io.produtoId)
-    const escolhas = io.escolhas?.map((e) => {
-      const x = produtos.find((y) => y.id === e.produtoId)
-      return { produtoId: e.produtoId, nome: x?.nome ?? e.nome, categoria: x?.categoria ?? 'outro', qtd: e.qtd }
-    })
+    const opcoes = new Set((p?.componentes ?? []).flatMap((c) => c.opcoes))
+    const maxEscolha = (p?.componentes ?? []).reduce((s, c) => s + c.qtd, 0)
+    const escolhas = io.escolhas
+      ?.filter((e) => opcoes.has(e.produtoId))
+      .map((e) => {
+        const x = produtos.find((y) => y.id === e.produtoId)
+        return { produtoId: e.produtoId, nome: x?.nome ?? e.nome, categoria: x?.categoria ?? 'outro', qtd: inteiro(e.qtd, 1, Math.max(1, maxEscolha)) }
+      })
     // fardo/caixa (opção única): as unidades saem do estoque como no balcão
     const auto =
       !escolhas && p?.componentes?.length && p.componentes.every((c) => c.opcoes.length === 1)
@@ -262,7 +280,8 @@ export function itensDoOnline(po: Pick<PedidoOnline, 'itens'>, dados: Dados): It
           })
         : undefined
     const esc = escolhas ?? auto
-    if (!p) return { produtoId: io.produtoId, nome: io.nome, categoria: 'outro', emoji: io.emoji, preco: io.preco, custo: 0, qtd: io.qtd, obs: io.obs }
+    // produto que não existe no cadastro: entra com o preço que veio, mas o PDV avisa antes de aceitar (itensDesconhecidos)
+    if (!p) return { produtoId: io.produtoId, nome: String(io.nome).slice(0, 80), categoria: 'outro', emoji: '❓', preco: Math.max(0, Number(io.preco) || 0), custo: 0, qtd: io.qtd, obs: io.obs }
     // adicionais: valem o preço e o custo cadastrados no PDV
     const adicionais = (io.adicionais ?? [])
       .map((a) => dados.config.adicionais?.find((x) => x.id === a.id))
@@ -285,16 +304,17 @@ export function itensDoOnline(po: Pick<PedidoOnline, 'itens'>, dados: Dados): It
 
 export function totalNoPdv(po: PedidoOnline, dados: Dados) {
   const itens = itensDoOnline(po, dados)
-  return arred(itens.reduce((s, i) => s + i.preco * i.qtd, 0) + po.taxaEntrega)
+  return arred(itens.reduce((s, i) => s + i.preco * i.qtd, 0) + taxaDoPedido(po, dados))
 }
 
 /** Lança o pedido online como venda do caixa aberto (baixa estoque, entra no faturamento). */
 function lancarNoPdv(po: PedidoOnline, dados: Dados): Pedido | null {
-  const { caixaAberto, config, insumos, produtos } = dados
+  const { caixaAberto, config, insumos } = dados
   if (!caixaAberto) return null
   const itens = itensDoOnline(po, dados)
   const subtotal = arred(itens.reduce((s, i) => s + i.preco * i.qtd, 0))
-  const total = arred(subtotal + po.taxaEntrega)
+  const taxaEntrega = taxaDoPedido(po, dados)
+  const total = arred(subtotal + taxaEntrega)
   const forma = FORMA_PDV[po.pagamento.forma]
   const recebido = forma === 'dinheiro' && po.pagamento.trocoPara && po.pagamento.trocoPara > total ? po.pagamento.trocoPara : 0
   const embalagens = montarEmbalagens(embalagensSugeridas(itens, config, insumos), insumos)
@@ -315,7 +335,7 @@ function lancarNoPdv(po: PedidoOnline, dados: Dados): Pedido | null {
     troco: recebido ? arred(recebido - total) : 0,
     taxas: arred((total * taxaDaForma(forma, config)) / 100),
     canal: 'site',
-    taxaEntrega: po.taxaEntrega,
+    taxaEntrega,
     online: {
       id: po.id,
       tipo: po.tipo,
@@ -332,17 +352,14 @@ function lancarNoPdv(po: PedidoOnline, dados: Dados): Pedido | null {
     entregue: false,
   }
   dados.setPedidos((ps) => [...ps, pedido])
-  dados.setInsumos((is) => moverEstoqueInsumos(is, comEmbalagens(consumoInsumosDosItens(itens, produtos, insumos), embalagens), -1))
-  dados.setProdutos((ps) => moverEstoqueProdutos(ps, consumoDosItens(itens), -1))
+  moverEstoque(dados, itens, -1, embalagens)
   if (config.imprimirAoFinalizar) imprimirPedido(pedido, config)
   return pedido
 }
 
 function estornarNoPdv(pedido: Pedido, dados: Dados) {
-  const { produtos, insumos } = dados
   dados.setPedidos((ps) => ps.map((p) => (p.id === pedido.id ? { ...p, cancelado: true } : p)))
-  dados.setInsumos((is) => moverEstoqueInsumos(is, comEmbalagens(consumoInsumosDosItens(pedido.itens, produtos, insumos), pedido.embalagens), 1))
-  dados.setProdutos((ps) => moverEstoqueProdutos(ps, consumoDosItens(pedido.itens), 1))
+  moverEstoque(dados, pedido.itens, 1, pedido.embalagens)
 }
 
 // =====================================================================================
@@ -414,6 +431,12 @@ export default function PedidosOnline({ dados, online, irPara }: { dados: Dados;
       if (confirm('O caixa está fechado. Abra o caixa para aceitar o pedido (ele entra nas vendas do dia).\n\nIr para o Caixa agora?')) irPara('caixa')
       return
     }
+    const estranhos = itensDesconhecidos(po, dados)
+    if (
+      estranhos.length &&
+      !confirm(`Atenção: este pedido tem item que não existe no cadastro do PDV:\n${estranhos.map((i) => `• ${i.nome}`).join('\n')}\n\nPode ser produto apagado ou pedido adulterado. Aceitar mesmo assim (com o preço que veio do celular)?`)
+    )
+      return
     const noPdv = totalNoPdv(po, dados)
     if (Math.abs(noPdv - po.total) > 0.009 && !confirm(`Atenção: o cliente viu ${brl(po.total)}, mas com os preços de agora do PDV o pedido dá ${brl(noPdv)}.\n\nAceitar e cobrar ${brl(noPdv)}?`)) return
     void agir(po, async () => {
@@ -590,7 +613,7 @@ function ModalQr({ aoFechar, nome }: { aoFechar: () => void; nome: string }) {
     const w = window.open('', '_blank')
     if (!w) return
     w.document.write(
-      `<html><head><title>QR Code — Cardápio</title><style>body{font-family:sans-serif;text-align:center;padding:40px}svg{width:320px;height:320px}h1{font-size:32px;margin:0}p{font-size:20px}</style></head><body><h1>${nome}</h1><p>📱 Peça pelo celular!<br>Aponte a câmera para o código</p>${svg}<p><b>${URL_CARDAPIO.replace('https://', '')}</b></p><script>setTimeout(()=>print(),300)</script></body></html>`,
+      `<html><head><title>QR Code — Cardápio</title><style>body{font-family:sans-serif;text-align:center;padding:40px}svg{width:320px;height:320px}h1{font-size:32px;margin:0}p{font-size:20px}</style></head><body><h1>${nome.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}</h1><p>📱 Peça pelo celular!<br>Aponte a câmera para o código</p>${svg}<p><b>${URL_CARDAPIO.replace('https://', '')}</b></p><script>setTimeout(()=>print(),300)</script></body></html>`,
     )
     w.document.close()
   }
@@ -793,9 +816,7 @@ function ModalDetalhe({ po, dados, aoFechar, irPara }: { po: PedidoOnline; dados
         // a venda sai do faturamento; os itens só voltam ao estoque se não foram usados
         registrar({ tipo: 'cancelamento', categoria: categoria || undefined, texto: texto.trim() }, { cancelado: true })
         if (devolverEstoque) {
-          const { produtos, insumos } = dados
-          dados.setInsumos((is) => moverEstoqueInsumos(is, comEmbalagens(consumoInsumosDosItens(ped.itens, produtos, insumos), ped.embalagens), 1))
-          dados.setProdutos((ps) => moverEstoqueProdutos(ps, consumoDosItens(ped.itens), 1))
+          moverEstoque(dados, ped.itens, 1, ped.embalagens)
         }
         await mudarStatus(po.id, 'cancelado', { motivo: texto.trim() || categoria || 'Cancelado pelo restaurante' })
       }

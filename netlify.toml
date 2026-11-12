@@ -6,3 +6,23 @@
 
 [build.environment]
   NODE_VERSION = "20"
+
+# Cabeçalhos de segurança em todas as páginas
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(self), microphone=(), geolocation=()"
+    Strict-Transport-Security = "max-age=31536000"
+
+# O PDV e o garçom não aparecem no Google
+[[headers]]
+  for = "/pdv/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+[[headers]]
+  for = "/garcom/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"

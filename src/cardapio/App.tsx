@@ -2,6 +2,7 @@ import qrcode from 'qrcode-generator'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { criarConta, entrar, entrarComGoogle, mensagemDeErro, prepararLogin, recuperarSenha, sair, useConta } from '../nuvem/conta'
 import { brl } from '../pdv/dados'
+import { gravarLocal, lerLocal } from '../hooks/armazenamento'
 import { CartaoProduto, Folha, ProdutoSheet, Stepper } from './componentes'
 import {
   NOMES_FORMA_ONLINE,
@@ -35,21 +36,6 @@ interface ItemSacola extends ItemOnline {
 
 const CHAVE_SACOLA = 'cardapio:sacola'
 
-function lerLocal<T>(chave: string, padrao: T): T {
-  try {
-    const v = localStorage.getItem(chave)
-    return v ? (JSON.parse(v) as T) : padrao
-  } catch {
-    return padrao
-  }
-}
-function gravarLocal(chave: string, v: unknown) {
-  try {
-    localStorage.setItem(chave, JSON.stringify(v))
-  } catch {
-    // sem armazenamento: a sacola só não sobrevive a recarregar a página
-  }
-}
 
 function useSacola() {
   const [itens, setItens] = useState<ItemSacola[]>(() => lerLocal(CHAVE_SACOLA, []))

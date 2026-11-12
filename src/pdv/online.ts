@@ -502,6 +502,13 @@ service cloud.firestore {
     function logado() {
       return request.auth != null;
     }
+    function texto(v, max) {
+      return v is string && v.size() <= max;
+    }
+    // o cardápio só aceita pedido com o restaurante ABERTO no PDV (evita pedido fora de hora e spam)
+    function lojaAberta() {
+      return get(/databases/$(database)/documents/${COL_LOJA}/loja).data.aberto == true;
+    }
     // garçom: e-mail confirmado e liberado no PDV (Configurações → Garçons)
     function garcom() {
       return logado()
@@ -524,11 +531,20 @@ service cloud.firestore {
     // Pedidos de entrega/retirada do cardápio digital
     match /${COL_PEDIDOS}/{id} {
       allow create: if logado()
+        && lojaAberta()
+        && request.resource.data.keys().hasOnly(['uid', 'cliente', 'tipo', 'endereco', 'itens', 'subtotal', 'taxaEntrega', 'total', 'pagamento', 'obs', 'status', 'criadoEm'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.status == 'novo'
+        && request.resource.data.tipo in ['entrega', 'retirada']
         && request.resource.data.total is number
+        && request.resource.data.total > 0
+        && request.resource.data.total < 5000
+        && request.resource.data.itens is list
         && request.resource.data.itens.size() > 0
-        && request.resource.data.itens.size() <= 60;
+        && request.resource.data.itens.size() <= 60
+        && texto(request.resource.data.obs, 300)
+        && texto(request.resource.data.cliente.nome, 80)
+        && texto(request.resource.data.cliente.telefone, 20);
       allow read: if dono() || (logado() && resource.data.uid == request.auth.uid);
       // o cliente só pode cancelar enquanto o restaurante não aceitou
       allow update: if dono() || (logado()
@@ -542,8 +558,12 @@ service cloud.firestore {
     // Pedidos das mesas lançados pelos garçons
     match /${COL_MESA}/{id} {
       allow create: if garcom()
+        && request.resource.data.keys().hasOnly(['uid', 'garcom', 'mesa', 'itens', 'total', 'status', 'criadoEm'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.status == 'novo'
+        && request.resource.data.garcom.email.lower() == request.auth.token.email.lower()
+        && texto(request.resource.data.mesa, 30)
+        && request.resource.data.itens is list
         && request.resource.data.itens.size() > 0
         && request.resource.data.itens.size() <= 60;
       allow read: if dono() || (logado() && resource.data.uid == request.auth.uid);
@@ -552,7 +572,18 @@ service cloud.firestore {
 
     // Dados de entrega salvos do cliente
     match /${COL_CLIENTES}/{uid} {
-      allow read, write: if logado() && (request.auth.uid == uid || dono());
+      allow read: if logado() && (request.auth.uid == uid || dono());
+      allow create, update: if logado() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['nome', 'telefone', 'endereco'])
+        && texto(request.resource.data.nome, 80)
+        && texto(request.resource.data.telefone, 20);
+      // LGPD: o cliente pode apagar os próprios dados
+      allow delete: if logado() && (request.auth.uid == uid || dono());
+    }
+
+    // qualquer outro caminho: fechado
+    match /{caminho=**} {
+      allow read, write: if false;
     }
   }
 }`

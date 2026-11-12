@@ -1,7 +1,7 @@
 import qrcode from 'qrcode-generator'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { statusComanda } from './comanda'
-import { brl, consumoDosItens, consumoInsumosDosItens, moverEstoqueInsumos, moverEstoqueProdutos, novoId, type Dados } from './dados'
+import { brl, novoId, type Dados, moverEstoque } from './dados'
 import { imprimirLancamento } from './impressao'
 import { URL_GARCOM, ouvirPedidosMesa, pegarPedidoMesa, publicarGarcons, tocarCampainha, type PedidoMesa } from './online'
 import { itensDoOnline, textoErroNuvem, type Online } from './PedidosOnline'
@@ -101,8 +101,7 @@ export function useGarcomPdv(dados: Dados, online: Online) {
       d.setComandas((cs) => [...cs, comanda])
       recentes.current.set(pm.mesa.trim().toLowerCase(), comanda)
     }
-    d.setInsumos((is) => moverEstoqueInsumos(is, consumoInsumosDosItens(itens, d.produtos, d.insumos), -1))
-    d.setProdutos((ps) => moverEstoqueProdutos(ps, consumoDosItens(itens), -1))
+    moverEstoque(d, itens, -1)
     if (d.config.imprimirAoFinalizar && d.config.viaChurrasqueira) imprimirLancamento(comanda, itens, d.config, !existente || existente.itens.length === 0)
     if (d.config.online?.som !== false) tocarCampainha()
     const qtd = itens.reduce((s, i) => s + i.qtd, 0)
