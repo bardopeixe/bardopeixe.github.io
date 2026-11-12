@@ -175,6 +175,22 @@ export function comEmbalagens(consumo: Record<string, number>, embalagens?: Emba
   return m
 }
 
+/**
+ * Baixa (sinal -1) ou devolve (sinal +1) o estoque de uma lista de itens:
+ * os produtos prontos/de combo e os insumos da ficha técnica (e as embalagens, se houver).
+ * Usado em toda venda, comanda, pedido online, cancelamento e estorno de itens.
+ */
+export function moverEstoque(
+  dados: Pick<Dados, 'produtos' | 'insumos' | 'setProdutos' | 'setInsumos'>,
+  itens: Pick<ItemPedido, 'produtoId' | 'qtd' | 'escolhas'>[],
+  sinal: 1 | -1,
+  embalagens?: EmbalagemPedido[],
+) {
+  const insumosUsados = comEmbalagens(consumoInsumosDosItens(itens, dados.produtos, dados.insumos), embalagens)
+  dados.setInsumos((is) => moverEstoqueInsumos(is, insumosUsados, sinal))
+  dados.setProdutos((ps) => moverEstoqueProdutos(ps, consumoDosItens(itens), sinal))
+}
+
 export function moverEstoqueProdutos(produtos: Produto[], consumo: Record<string, number>, sinal: 1 | -1) {
   return produtos.map((p) =>
     p.estoque !== undefined && consumo[p.id] ? { ...p, estoque: p.estoque + sinal * consumo[p.id] } : p,

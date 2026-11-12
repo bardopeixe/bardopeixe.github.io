@@ -13,6 +13,7 @@ import {
   useConta,
 } from '../nuvem/conta'
 import { brl } from '../pdv/dados'
+import { gravarLocal, lerLocal } from '../hooks/armazenamento'
 import {
   enviarPedidoMesa,
   lerEquipe,
@@ -38,21 +39,6 @@ interface ItemCarrinho extends ItemOnline {
 const CHAVE = 'garcom:carrinho'
 const MESAS = Array.from({ length: 30 }, (_, i) => String(i + 1))
 
-function lerLocal<T>(chave: string, padrao: T): T {
-  try {
-    const v = localStorage.getItem(chave)
-    return v ? (JSON.parse(v) as T) : padrao
-  } catch {
-    return padrao
-  }
-}
-function gravarLocal(chave: string, v: unknown) {
-  try {
-    localStorage.setItem(chave, JSON.stringify(v))
-  } catch {
-    // sem armazenamento: o carrinho só não fica salvo
-  }
-}
 
 const chaveItem = (i: ItemOnline) =>
   `${i.produtoId}|${(i.escolhas ?? []).map((e) => `${e.produtoId}:${e.qtd}`).join(',')}|${(i.adicionais ?? []).map((a) => a.id).sort().join(',')}|${i.obs}`

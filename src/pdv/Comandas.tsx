@@ -12,7 +12,7 @@ import {
   statusComanda,
   totalComanda,
 } from './comanda'
-import { NOMES_FORMA, arred, brl, consumoDosItens, consumoInsumosDosItens, hora, moverEstoqueInsumos, moverEstoqueProdutos, novoId, type Dados } from './dados'
+import { NOMES_FORMA, arred, brl, hora, novoId, type Dados, moverEstoque } from './dados'
 import { imprimirConferencia, imprimirContaCompleta, imprimirCupons, imprimirLancamento, imprimirPedido } from './impressao'
 import type { Comanda, ItemComanda, Pagamento, Pedido } from './tipos'
 import { CampoNumero, CampoTexto, Imagem, Modal, btn } from './ui'
@@ -205,7 +205,7 @@ export function DetalheComanda({
   irPara: (aba: 'caixa') => void
   rotuloVoltar?: string
 }) {
-  const { pedidos, setPedidos, setComandas, caixaAberto, config, produtos, insumos, setProdutos, setInsumos } = dados
+  const { pedidos, setPedidos, setComandas, caixaAberto, config, produtos } = dados
   const [modo, setModo] = useState<'ver' | 'escolher'>('ver')
   const [selecao, setSelecao] = useState<Record<string, number>>({})
   const [cobrando, setCobrando] = useState<Cobranca | null>(null)
@@ -249,16 +249,14 @@ export function DetalheComanda({
   /** Tira 1 unidade ainda não paga (lançada por engano) e devolve ao estoque. */
   function tirarUm(item: ItemComanda) {
     const um = [{ ...item, qtd: 1 }]
-    setProdutos((ps) => moverEstoqueProdutos(ps, consumoDosItens(um), 1))
-    setInsumos((is) => moverEstoqueInsumos(is, consumoInsumosDosItens(um, produtos, insumos), 1))
+    moverEstoque(dados, um, 1)
     atualizar({ itens: c.itens.map((i) => (i.id === item.id ? { ...i, qtd: i.qtd - 1 } : i)).filter((i) => i.qtd > 0) })
   }
 
   function cancelarComanda() {
     if (pagos.length) return alert('Esta comanda já tem pagamento. Cancele os pagamentos no Painel antes.')
     if (!confirm(`Cancelar a comanda de ${rotuloComanda(c)}? Os itens voltam para o estoque.`)) return
-    setProdutos((ps) => moverEstoqueProdutos(ps, consumoDosItens(c.itens), 1))
-    setInsumos((is) => moverEstoqueInsumos(is, consumoInsumosDosItens(c.itens, produtos, insumos), 1))
+    moverEstoque(dados, c.itens, 1)
     atualizar({ canceladaEm: new Date().toISOString() })
     aoVoltar()
   }

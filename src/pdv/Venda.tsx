@@ -10,15 +10,12 @@ import {
   NOMES_FORMA,
   arred,
   brl,
-  comEmbalagens,
   consumoDosItens,
   consumoInsumosDosItens,
   embalagensSugeridas,
   montarEmbalagens,
   precoComEscolhas,
   custoCompleto,
-  moverEstoqueInsumos,
-  moverEstoqueProdutos,
   novoId,
   taxaDaForma,
   taxaDoCanal,
@@ -29,6 +26,7 @@ import {
   paraItem,
   somaAdicionais,
   type Dados,
+  moverEstoque,
 } from './dados'
 import { imprimirLancamento, imprimirPedido } from './impressao'
 import { DetalheComanda } from './Comandas'
@@ -61,7 +59,7 @@ export interface ModoComanda {
 }
 
 export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara: (aba: 'caixa') => void; comanda?: ModoComanda }) {
-  const { produtos, setProdutos, insumos, setInsumos, pedidos, setPedidos, caixaAberto, config } = dados
+  const { produtos, setProdutos, insumos, pedidos, setPedidos, caixaAberto, config } = dados
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [cliente, setCliente] = useState('')
   const [viagem, setViagem] = useState(false)
@@ -289,8 +287,7 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
     if (!comanda || !linhas.length) return
     const itens = montarItens()
     const agora = new Date().toISOString()
-    setInsumos((is) => moverEstoqueInsumos(is, consumoInsumosDosItens(itens, produtos, insumos), -1))
-    setProdutos((ps) => moverEstoqueProdutos(ps, consumoDosItens(itens), -1))
+    moverEstoque(dados, itens, -1)
     comanda.aoLancar(itens.map((i) => ({ ...i, id: novoId(), lancadoEm: agora })))
     limpar()
   }
@@ -308,8 +305,7 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
       abertaEm: agora,
       itens: itens.map((i) => ({ ...i, id: novoId(), lancadoEm: agora })),
     }
-    setInsumos((is) => moverEstoqueInsumos(is, consumoInsumosDosItens(itens, produtos, insumos), -1))
-    setProdutos((ps) => moverEstoqueProdutos(ps, consumoDosItens(itens), -1))
+    moverEstoque(dados, itens, -1)
     dados.setComandas((cs) => [...cs, c])
     if (config.imprimirAoFinalizar && config.viaChurrasqueira) imprimirLancamento(c, c.itens, config, true)
     limpar()
@@ -344,8 +340,7 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
       entregue: false,
     }
     setPedidos((ps) => [...ps, pedido])
-    setInsumos((is) => moverEstoqueInsumos(is, consumoInsumosDosItens(itens, produtos, insumos), -1))
-    setProdutos((ps) => moverEstoqueProdutos(ps, consumoDosItens(itens), -1))
+    moverEstoque(dados, itens, -1)
     // só a via de preparo (se tiver o que preparar); não tem cupom de cliente
     if (config.imprimirAoFinalizar && config.viaChurrasqueira && itens.some((i) => i.categoria !== 'bebida'))
       imprimirPedido(pedido, config, { churrasqueira: true, cliente: false })
@@ -385,8 +380,7 @@ export default function Venda({ dados, irPara, comanda }: { dados: Dados; irPara
       entregue: false,
     }
     setPedidos((ps) => [...ps, pedido])
-    setInsumos((is) => moverEstoqueInsumos(is, comEmbalagens(consumoInsumosDosItens(itens, produtos, insumos), embalagens), -1))
-    setProdutos((ps) => moverEstoqueProdutos(ps, consumoDosItens(itens), -1))
+    moverEstoque(dados, itens, -1, embalagens)
     if (config.imprimirAoFinalizar) imprimirPedido(pedido, config)
     setUltimo(pedido)
     setPagando(false)
