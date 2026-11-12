@@ -182,6 +182,8 @@ export interface Pedido {
   parte?: string
   /** Saída sem venda (consumo próprio, cortesia…): sai do estoque, não entra dinheiro; o custo sai do lucro. */
   cortesia?: { motivo: string; /** quanto valeria na venda */ valor: number }
+  /** Reclamações, estornos e cancelamento registrados depois da venda. */
+  ocorrencias?: Ocorrencia[]
   /** Pedido que veio do iFood/99Food (a comissão do app entra em `taxas`). */
   canal?: Canal
   /** Taxa de entrega cobrada do cliente (já somada no total). */
@@ -208,6 +210,21 @@ export interface Pedido {
 }
 
 export type TipoMovimento = 'despesa' | 'sangria' | 'suprimento'
+
+export type TipoOcorrencia = 'reclamacao' | 'estorno' | 'cancelamento'
+
+/** Algo que aconteceu com um pedido depois da venda (reclamação do cliente, devolução de dinheiro, cancelamento). */
+export interface Ocorrencia {
+  id: string
+  em: string
+  tipo: TipoOcorrencia
+  /** Ex.: "Atraso", "Item errado", "Faltou item". */
+  categoria?: string
+  texto: string
+  /** Estorno: quanto devolveu ao cliente e de onde saiu. */
+  valor?: number
+  origem?: 'dinheiro' | 'conta'
+}
 
 export interface Movimento {
   id: string
