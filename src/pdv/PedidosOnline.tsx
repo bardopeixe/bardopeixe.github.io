@@ -39,7 +39,7 @@ import {
   type PedidoOnline,
   type StatusOnline,
 } from './online'
-import type { ConfigOnline, FormaPagamento, ItemPedido, Pedido, TipoChavePix } from './tipos'
+import type { ConfigOnline, FormaPagamento, ItemPedido, Movimento, Ocorrencia, Pedido, TipoChavePix } from './tipos'
 import { CampoNumero, CampoTexto, Modal, btn } from './ui'
 
 // =====================================================================================
@@ -390,6 +390,7 @@ const COLUNAS: { titulo: string; status: StatusOnline[]; cor: string }[] = [
 export default function PedidosOnline({ dados, online, irPara }: { dados: Dados; online: Online; irPara: (a: 'caixa') => void }) {
   const [configurando, setConfigurando] = useState(!dados.config.online || !online.usuario)
   const [recusando, setRecusando] = useState<PedidoOnline | null>(null)
+  const [detalhe, setDetalhe] = useState<PedidoOnline | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
   const setCfg = (m: Partial<ConfigOnline>) => dados.setConfig((c) => ({ ...c, online: { ...CONFIG_ONLINE_INICIAL, ...(c.online ?? {}), ...m } }))
 
@@ -481,23 +482,45 @@ export default function PedidosOnline({ dados, online, irPara }: { dados: Dados;
           <h3 className="mb-2 font-extrabold">Finalizados hoje ({finalizados.length})</h3>
           <ul className="divide-y divide-stone-100 text-sm">
             {finalizados.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center gap-2 py-2">
+              <li key={p.id}>
+                <button className="flex w-full flex-wrap items-center gap-2 rounded-xl px-2 py-2 text-left transition hover:bg-stone-50" onClick={() => setDetalhe(p)} title="Ver detalhes">
                 <span className="w-12 text-stone-500">{hora(p.criadoEm)}</span>
                 <span className="flex-1 font-semibold">
                   {p.numero ? `Nº ${p.numero} · ` : ''}
                   {p.cliente.nome}
+                  {(() => {
+                    const oc = lancado(p)?.ocorrencias ?? []
+                    const rec = oc.filter((o) => o.tipo === 'reclamacao').length
+                    const est = oc.filter((o) => o.tipo === 'estorno').reduce((s, o) => s + (o.valor ?? 0), 0)
+                    return (
+                      <>
+                        {rec > 0 && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">⚠ {rec} reclamação{rec > 1 ? 'ões' : ''}</span>}
+                        {est > 0 && <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-800">estorno {brl(est)}</span>}
+                      </>
+                    )
+                  })()}
                 </span>
                 <span className={p.status === 'entregue' ? 'font-bold text-emerald-700' : 'font-bold text-red-600'}>
                   {ROTULO_STATUS[p.status]}
                   {p.motivo ? ` (${p.motivo})` : ''}
                 </span>
                 <span className="w-24 text-right font-bold">{brl(p.total)}</span>
+                <span className="text-stone-400">›</span>
+                </button>
               </li>
             ))}
           </ul>
         </section>
       )}
 
+      {detalhe && (
+        <ModalDetalhe
+          po={online.pedidos.find((x) => x.id === detalhe.id) ?? detalhe}
+          dados={dados}
+          aoFechar={() => setDetalhe(null)}
+          irPara={irPara}
+        />
+      )}
       {recusando && <ModalRecusar po={recusando} aoFechar={() => setRecusando(null)} aoConfirmar={(m) => recusar(recusando, m)} />}
     </div>
   )
@@ -715,6 +738,244 @@ function CartaoPedido({
         )}
       </div>
     </article>
+  )
+}
+
+// =====================================================================================
+// Detalhes de um pedido finalizado: cancelar, estornar, reclamação
+// =====================================================================================
+
+const CATEGORIAS_RECLAMACAO = ['Atraso na entrega', 'Item errado', 'Faltou item', 'Comida fria', 'Qualidade', 'Embalagem', 'Atendimento', 'Outro']
+
+function ModalDetalhe({ po, dados, aoFechar, irPara }: { po: PedidoOnline; dados: Dados; aoFechar: () => void; irPara: (a: 'caixa') => void }) {
+  const ped = dados.pedidos.find((p) => p.online?.id === po.id)
+  const [acao, setAcao] = useState<null | 'cancelar' | 'estornar' | 'reclamar'>(null)
+  const [texto, setTexto] = useState('')
+  const [categoria, setCategoria] = useState('')
+  const [valor, setValor] = useState(0)
+  const [origem, setOrigem] = useState<'dinheiro' | 'conta'>(po.pagamento.forma === 'dinheiro' ? 'dinheiro' : 'conta')
+  const [devolverEstoque, setDevolverEstoque] = useState(false)
+  const [ocupado, setOcupado] = useState(false)
+  const ocorrencias = ped?.ocorrencias ?? []
+  const estornado = ocorrencias.filter((o) => o.tipo === 'estorno').reduce((s, o) => s + (o.valor ?? 0), 0)
+  const cancelado = po.status === 'cancelado' || po.status === 'recusado' || ped?.cancelado
+  const tel = po.cliente.telefone.replace(/\D/g, '')
+
+  function registrar(o: Omit<Ocorrencia, 'id' | 'em'>, mudanca: Partial<Pedido> = {}) {
+    if (!ped) return
+    const nova: Ocorrencia = { ...o, id: novoId(), em: new Date().toISOString() }
+    dados.setPedidos((ps) => ps.map((p) => (p.id === ped.id ? { ...p, ...mudanca, ocorrencias: [...(p.ocorrencias ?? []), nova] } : p)))
+  }
+
+  async function confirmar() {
+    if (!ped) return
+    setOcupado(true)
+    try {
+      if (acao === 'reclamar') {
+        registrar({ tipo: 'reclamacao', categoria: categoria || undefined, texto: texto.trim() })
+      } else if (acao === 'estornar') {
+        if (!dados.caixaAberto) {
+          if (confirm('Para estornar, o caixa precisa estar aberto (o valor sai do caixa de hoje). Ir para o Caixa?')) irPara('caixa')
+          return
+        }
+        const v = Math.min(valor, ped.total - estornado)
+        const mov: Movimento = {
+          id: novoId(),
+          tipo: 'despesa',
+          descricao: `Estorno — pedido online nº ${ped.numero} (${ped.cliente})${texto.trim() ? `: ${texto.trim()}` : ''}`,
+          valor: v,
+          origem,
+          criadoEm: new Date().toISOString(),
+        }
+        dados.setCaixas((cs) => cs.map((c) => (c.id === dados.caixaAberto!.id ? { ...c, movimentos: [...c.movimentos, mov] } : c)))
+        registrar({ tipo: 'estorno', categoria: categoria || undefined, texto: texto.trim(), valor: v, origem })
+      } else if (acao === 'cancelar') {
+        // a venda sai do faturamento; os itens só voltam ao estoque se não foram usados
+        registrar({ tipo: 'cancelamento', categoria: categoria || undefined, texto: texto.trim() }, { cancelado: true })
+        if (devolverEstoque) {
+          const { produtos, insumos } = dados
+          dados.setInsumos((is) => moverEstoqueInsumos(is, comEmbalagens(consumoInsumosDosItens(ped.itens, produtos, insumos), ped.embalagens), 1))
+          dados.setProdutos((ps) => moverEstoqueProdutos(ps, consumoDosItens(ped.itens), 1))
+        }
+        await mudarStatus(po.id, 'cancelado', { motivo: texto.trim() || categoria || 'Cancelado pelo restaurante' })
+      }
+      setAcao(null)
+      setTexto('')
+      setCategoria('')
+    } catch (e) {
+      alert(textoErroNuvem(e))
+    } finally {
+      setOcupado(false)
+    }
+  }
+
+  const rotuloAcao = acao === 'cancelar' ? 'Cancelar pedido' : acao === 'estornar' ? 'Estornar valor' : 'Registrar reclamação'
+  const podeConfirmar =
+    !ocupado &&
+    (acao === 'reclamar' ? !!(texto.trim() || categoria) : acao === 'estornar' ? valor > 0 && valor <= ped!.total - estornado + 0.001 : !!(texto.trim() || categoria))
+
+  return (
+    <Modal titulo={`Pedido ${po.numero ? `nº ${po.numero}` : 'online'} — ${po.cliente.nome}`} aberto aoFechar={aoFechar} largo>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className={`rounded-full px-3 py-1 font-bold ${cancelado ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-800'}`}>
+          {cancelado && ped?.cancelado && po.status === 'entregue' ? 'Cancelado no caixa' : ROTULO_STATUS[po.status]}
+        </span>
+        <span className="text-stone-500">
+          feito às {hora(po.criadoEm)}
+          {po.atualizadoEm ? ` · atualizado às ${hora(po.atualizadoEm)}` : ''}
+        </span>
+        {po.motivo && <span className="text-red-600">Motivo: {po.motivo}</span>}
+      </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <section className="rounded-2xl bg-stone-50 p-3 text-sm">
+          <div className="font-bold">{po.tipo === 'entrega' ? '🛵 Entrega' : '🛍️ Retirada'}</div>
+          <div className="mt-1">{po.cliente.nome}</div>
+          <div>
+            {po.cliente.telefone}
+            {tel && (
+              <a className="ml-2 font-semibold text-emerald-700 underline" href={`https://wa.me/55${tel.replace(/^55/, '')}`} target="_blank" rel="noreferrer">
+                WhatsApp
+              </a>
+            )}
+          </div>
+          {po.endereco && <div className="mt-1 text-stone-700">{enderecoTexto(po)}</div>}
+          {po.endereco?.referencia && <div className="text-stone-500">Ref.: {po.endereco.referencia}</div>}
+          <div className="mt-2">
+            Pagamento: <b>{NOMES_FORMA_ONLINE[po.pagamento.forma]}</b>
+            {po.pagamento.trocoPara ? ` (troco p/ ${brl(po.pagamento.trocoPara)})` : ''}
+          </div>
+          {po.obs && <div className="mt-1 italic text-stone-600">“{po.obs}”</div>}
+        </section>
+        <section className="rounded-2xl bg-stone-50 p-3 text-sm">
+          <ul className="space-y-1">
+            {po.itens.map((i, k) => (
+              <li key={k} className="flex justify-between gap-2">
+                <span>
+                  {i.qtd}× {i.nome}
+                  {i.adicionais?.length ? <span className="text-emerald-700"> {i.adicionais.map((a) => `+ ${a.nome}`).join(' ')}</span> : null}
+                  {i.obs ? <span className="block text-xs italic text-stone-500">“{i.obs}”</span> : null}
+                </span>
+                <span>{brl(i.preco * i.qtd)}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2 border-t border-stone-200 pt-2">
+            {po.taxaEntrega > 0 && (
+              <div className="flex justify-between">
+                <span>Taxa de entrega</span>
+                <span>{brl(po.taxaEntrega)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-base font-black">
+              <span>Total</span>
+              <span>{brl(po.total)}</span>
+            </div>
+            {estornado > 0 && (
+              <div className="flex justify-between font-semibold text-violet-700">
+                <span>Estornado</span>
+                <span>− {brl(estornado)}</span>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      {ocorrencias.length > 0 && (
+        <section className="mt-4">
+          <h3 className="font-extrabold">Ocorrências</h3>
+          <ul className="mt-2 space-y-2 text-sm">
+            {ocorrencias.map((o) => (
+              <li key={o.id} className="rounded-xl border border-stone-200 p-2">
+                <b className={o.tipo === 'reclamacao' ? 'text-amber-700' : o.tipo === 'estorno' ? 'text-violet-700' : 'text-red-700'}>
+                  {o.tipo === 'reclamacao' ? '⚠ Reclamação' : o.tipo === 'estorno' ? `↩ Estorno de ${brl(o.valor ?? 0)} (${o.origem === 'dinheiro' ? 'dinheiro' : 'conta'})` : '✖ Cancelado'}
+                </b>
+                {o.categoria ? ` · ${o.categoria}` : ''} <span className="text-stone-500">· {new Date(o.em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                {o.texto && <div className="text-stone-700">{o.texto}</div>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {!ped ? (
+        <p className="mt-4 rounded-xl bg-stone-100 p-3 text-sm text-stone-600">Este pedido não chegou a entrar no caixa (foi recusado ou cancelado antes de aceitar).</p>
+      ) : !acao ? (
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button className={btn.secundario} onClick={() => imprimirPedido(ped, dados.config, { churrasqueira: false, cliente: true })}>
+            🖨️ Cupom
+          </button>
+          <button className={btn.secundario} onClick={() => setAcao('reclamar')}>
+            ⚠ Registrar reclamação
+          </button>
+          {!cancelado && estornado < ped.total - 0.004 && (
+            <button
+              className={btn.secundario}
+              onClick={() => {
+                setValor(Math.round((ped.total - estornado) * 100) / 100)
+                setAcao('estornar')
+              }}
+            >
+              ↩ Estornar valor
+            </button>
+          )}
+          {!cancelado && (
+            <button className={`${btn.secundario} !text-red-600`} onClick={() => setAcao('cancelar')}>
+              ✖ Cancelar pedido
+            </button>
+          )}
+        </div>
+      ) : (
+        <section className="mt-5 animate-subir rounded-2xl border-2 border-stone-200 p-4">
+          <h3 className="font-extrabold">{rotuloAcao}</h3>
+          <p className="mt-1 text-sm text-stone-600">
+            {acao === 'cancelar'
+              ? 'A venda sai do faturamento do caixa e o cliente vê o pedido como cancelado. Se o cliente já pagou, registre também o estorno.'
+              : acao === 'estornar'
+                ? 'Devolveu dinheiro ao cliente (tudo ou parte). O valor sai do caixa aberto como despesa e aparece no fechamento.'
+                : 'Fica guardada no pedido, para acompanhar o que mais dá problema.'}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {CATEGORIAS_RECLAMACAO.map((c) => (
+              <button
+                key={c}
+                className={`rounded-full border-2 px-3 py-1 text-sm font-semibold ${categoria === c ? 'border-orange-600 bg-orange-50 text-orange-700' : 'border-stone-200'}`}
+                onClick={() => setCategoria(categoria === c ? '' : c)}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+          <CampoTexto className="mt-3" rotulo={acao === 'reclamar' ? 'O que aconteceu' : 'Motivo / observação'} valor={texto} aoMudar={setTexto} placeholder="Escreva os detalhes" />
+          {acao === 'estornar' && (
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <CampoNumero className="w-40" rotulo={`Valor (até ${brl(ped.total - estornado)})`} prefixo="R$" valor={valor} aoMudar={setValor} />
+              <div className="flex gap-1 rounded-xl bg-stone-100 p-1 text-sm font-bold">
+                {(['dinheiro', 'conta'] as const).map((o) => (
+                  <button key={o} className={`rounded-lg px-3 py-2 ${origem === o ? 'bg-white shadow' : 'text-stone-500'}`} onClick={() => setOrigem(o)}>
+                    {o === 'dinheiro' ? '💵 Da gaveta' : '🏦 Pix / conta'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {acao === 'cancelar' && (
+            <label className="mt-3 flex items-center gap-2 text-sm font-semibold">
+              <input type="checkbox" className="h-5 w-5" checked={devolverEstoque} onChange={(e) => setDevolverEstoque(e.target.checked)} />
+              Devolver os itens ao estoque (só se a comida não foi feita / bebida voltou)
+            </label>
+          )}
+          <div className="mt-4 flex gap-2">
+            <button className={btn.secundario} onClick={() => setAcao(null)}>
+              Voltar
+            </button>
+            <button className={`${btn.primario} flex-1 ${acao === 'cancelar' ? '!bg-red-600' : ''}`} disabled={!podeConfirmar} onClick={() => void confirmar()}>
+              {ocupado ? 'Salvando…' : rotuloAcao}
+            </button>
+          </div>
+        </section>
+      )}
+    </Modal>
   )
 }
 

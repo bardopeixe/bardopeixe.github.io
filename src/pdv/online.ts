@@ -136,7 +136,7 @@ export interface PedidoOnline {
   uid: string
   cliente: { nome: string; email: string; telefone: string }
   tipo: 'entrega' | 'retirada'
-  endereco?: { bairro: string; rua: string; numero: string; complemento: string; referencia: string }
+  endereco?: { bairro: string; rua: string; numero: string; complemento: string; referencia: string; cep?: string }
   itens: ItemOnline[]
   subtotal: number
   taxaEntrega: number
@@ -183,7 +183,7 @@ export const CONFIG_ONLINE_INICIAL: ConfigOnline = {
 
 export const enderecoTexto = (p: Pick<PedidoOnline, 'endereco'>) =>
   p.endereco
-    ? `${p.endereco.rua}, ${p.endereco.numero}${p.endereco.complemento ? ` — ${p.endereco.complemento}` : ''} · ${p.endereco.bairro}`
+    ? `${p.endereco.rua}, ${p.endereco.numero}${p.endereco.complemento ? ` — ${p.endereco.complemento}` : ''} · ${p.endereco.bairro}${p.endereco.cep ? ` · CEP ${p.endereco.cep}` : ''}`
     : ''
 
 // ---------------- montar o cardápio publicado ----------------
@@ -272,6 +272,32 @@ export function montarLojaOnline(args: {
     produtos: lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true })),
     atualizadoEm: new Date().toISOString(),
   }
+}
+
+// ---------------- CEP (ViaCEP, grátis e sem cadastro) ----------------
+
+export interface EnderecoCep {
+  rua: string
+  bairro: string
+  cidade: string
+  uf: string
+}
+
+/** Busca rua, bairro e cidade pelo CEP. Devolve null se o CEP não existe. */
+export async function buscarCep(cep: string): Promise<EnderecoCep | null> {
+  const n = cep.replace(/\D/g, '')
+  if (n.length !== 8) return null
+  const r = await fetch(`https://viacep.com.br/ws/${n}/json/`)
+  if (!r.ok) throw new Error('CEP indisponível')
+  const d = (await r.json()) as { erro?: boolean | string; logradouro?: string; bairro?: string; localidade?: string; uf?: string }
+  if (d.erro) return null
+  return { rua: d.logradouro ?? '', bairro: d.bairro ?? '', cidade: d.localidade ?? '', uf: d.uf ?? '' }
+}
+
+/** Compara nomes de bairro sem acento, maiúsculas e espaços extras. */
+export const mesmoBairro = (a: string, b: string) => {
+  const n = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+  return n(a) === n(b)
 }
 
 // ---------------- Pix (QR Code "copia e cola") ----------------
@@ -384,7 +410,7 @@ export async function mudarStatus(id: string, status: StatusOnline, extra: Parti
 export interface PerfilCliente {
   nome: string
   telefone: string
-  endereco?: { bairro: string; rua: string; numero: string; complemento: string; referencia: string }
+  endereco?: { bairro: string; rua: string; numero: string; complemento: string; referencia: string; cep?: string }
 }
 
 export async function lerPerfil(uid: string): Promise<PerfilCliente | null> {
